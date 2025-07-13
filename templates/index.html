@@ -6,42 +6,42 @@
         <h3>OCR Processing</h3>
         <p>Extract text from PDF files using OCR with rotation detection.</p>
         <button class="btn" onclick="runTool('ocr')" data-original-text="Run OCR">Run OCR</button>
-        <a href="/tools/ocr" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('main.tool_page', tool='ocr') }}" class="btn btn-secondary">Details</a>
     </div>
     
     <div class="tool-card">
         <h3>Model Benchmarking</h3>
         <p>Test multiple LLM models to find the best one for genealogy extraction.</p>
         <button class="btn" onclick="runTool('benchmark')" data-original-text="Run Benchmark">Run Benchmark</button>
-        <a href="/tools/benchmark" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('main.tool_page', tool='benchmark') }}" class="btn btn-secondary">Details</a>
     </div>
     
     <div class="tool-card">
         <h3>LLM Extraction</h3>
-        <p>Extract genealogical data from text using AI language models.</p>
+        <p>Extract genealogical data from text using AI language models with family-focused approach.</p>
         <button class="btn" onclick="runTool('extract')" data-original-text="Run Extraction">Run Extraction</button>
-        <a href="/tools/extract" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('main.tool_page', tool='extract') }}" class="btn btn-secondary">Details</a>
     </div>
     
     <div class="tool-card">
         <h3>GEDCOM Generation</h3>
         <p>Generate standard GEDCOM files from extracted genealogy data.</p>
         <button class="btn" onclick="runTool('gedcom')" data-original-text="Generate GEDCOM">Generate GEDCOM</button>
-        <a href="/tools/gedcom" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('main.tool_page', tool='gedcom') }}" class="btn btn-secondary">Details</a>
     </div>
     
     <div class="tool-card">
         <h3>Research Questions</h3>
         <p>Generate intelligent research questions from your family data.</p>
         <button class="btn" onclick="runTool('research')" data-original-text="Generate Questions">Generate Questions</button>
-        <a href="/tools/research" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('main.tool_page', tool='research') }}" class="btn btn-secondary">Details</a>
     </div>
     
     <div class="tool-card">
-        <h3>Full Pipeline</h3>
-        <p>Run the complete processing pipeline from OCR to research questions.</p>
-        <button class="btn" onclick="runTool('pipeline')" data-original-text="Run Pipeline">Run Pipeline</button>
-        <a href="/tools/pipeline" class="btn btn-secondary">Details</a>
+        <h3>CLI Tools Available</h3>
+        <p>Use Flask CLI commands for command-line access to all tools.</p>
+        <p><code>flask ocr</code>, <code>flask extract</code>, <code>flask gedcom</code>, <code>flask research</code>, <code>flask benchmark</code>, <code>flask pipeline</code></p>
+        <button class="btn" onclick="showCLIHelp()" data-original-text="Show CLI Help">Show CLI Help</button>
     </div>
 </div>
 {% endblock %}

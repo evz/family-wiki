@@ -66,51 +66,116 @@ class LLMGenealogyExtractor:
         return None
     
     def create_genealogy_prompt(self, text_chunk: str) -> str:
-        """Create a specialized prompt for genealogical data extraction"""
-        return f"""You are an expert Dutch genealogist. Analyze this historical family record text and extract structured information about individuals.
+        """Create a specialized prompt for genealogical data extraction with family linking"""
+        return f"""You are an expert Dutch genealogist. Analyze this historical family record text and extract structured family information with proper relationships.
 
 IMPORTANT CONTEXT:
-- This is Dutch genealogical text from a family book
-- * means birth, ~ means baptism, + means death, x means marriage
+- This is Dutch genealogical text from a family book organized by generations
+- * means birth, ~ means baptism, + means death, x means marriage  
 - Letters like "a.", "b.", "c." indicate siblings in birth order
 - Patterns like "1.1" or "III.2" indicate family groups
+- Look for phrases like "Kinderen van" (children of) to identify families
 - Dutch place names and dates in DD.MM.YYYY format are common
-- Names often include "van" (from) indicating place of origin
+- Names often include "van/de" indicating place of origin
 
 TEXT TO ANALYZE:
 {text_chunk}
 
-Extract information for each person mentioned and return ONLY valid JSON in this exact format:
-[
-  {{
-    "given_names": "first and middle names",
-    "surname": "family name including van/de prefixes",
-    "birth_date": "date if mentioned with *",
-    "birth_place": "place if mentioned with *", 
-    "baptism_date": "date if mentioned with ~",
-    "baptism_place": "place if mentioned with ~",
-    "death_date": "date if mentioned with +",
-    "death_place": "place if mentioned with +",
-    "marriage_date": "date if mentioned with x",
-    "marriage_place": "place if mentioned with x",
-    "spouse_name": "spouse name if mentioned",
-    "parents": "parent names if mentioned",
-    "sibling_letter": "letter like a, b, c if present",
-    "notes": "any additional information",
-    "confidence": 0.85
-  }}
-]
+Extract family groups and relationships. Return ONLY valid JSON in this exact format:
+{{
+  "families": [
+    {{
+      "family_id": "unique identifier like 'III.2' or descriptive name",
+      "parents": {{
+        "father": {{
+          "given_names": "first and middle names",
+          "surname": "family name including van/de prefixes",
+          "birth_date": "date if mentioned with *",
+          "birth_place": "place if mentioned with *",
+          "baptism_date": "date if mentioned with ~", 
+          "baptism_place": "place if mentioned with ~",
+          "death_date": "date if mentioned with +",
+          "death_place": "place if mentioned with +",
+          "marriage_date": "date if mentioned with x",
+          "marriage_place": "place if mentioned with x",
+          "notes": "additional information",
+          "confidence": 0.85
+        }},
+        "mother": {{
+          "given_names": "first and middle names",
+          "surname": "maiden name including van/de prefixes", 
+          "birth_date": "date if mentioned with *",
+          "birth_place": "place if mentioned with *",
+          "baptism_date": "date if mentioned with ~",
+          "baptism_place": "place if mentioned with ~", 
+          "death_date": "date if mentioned with +",
+          "death_place": "place if mentioned with +",
+          "marriage_date": "date if mentioned with x",
+          "marriage_place": "place if mentioned with x",
+          "notes": "additional information",
+          "confidence": 0.85
+        }}
+      }},
+      "children": [
+        {{
+          "given_names": "first and middle names",
+          "surname": "inherited family name",
+          "birth_date": "date if mentioned with *",
+          "birth_place": "place if mentioned with *",
+          "baptism_date": "date if mentioned with ~",
+          "baptism_place": "place if mentioned with ~",
+          "death_date": "date if mentioned with +", 
+          "death_place": "place if mentioned with +",
+          "marriage_date": "date if mentioned with x",
+          "marriage_place": "place if mentioned with x",
+          "spouse_name": "spouse name if mentioned",
+          "sibling_order": "a, b, c etc. if present",
+          "notes": "additional information including any children mentioned",
+          "confidence": 0.85
+        }}
+      ],
+      "generation_number": "1, 2, 3 etc. if mentioned",
+      "family_notes": "any notes about the family as a whole"
+    }}
+  ],
+  "isolated_individuals": [
+    {{
+      "given_names": "first and middle names", 
+      "surname": "family name including van/de prefixes",
+      "birth_date": "date if mentioned with *",
+      "birth_place": "place if mentioned with *",
+      "baptism_date": "date if mentioned with ~",
+      "baptism_place": "place if mentioned with ~",
+      "death_date": "date if mentioned with +",
+      "death_place": "place if mentioned with +", 
+      "marriage_date": "date if mentioned with x",
+      "marriage_place": "place if mentioned with x",
+      "spouse_name": "spouse name if mentioned",
+      "relationship_context": "how this person relates to families mentioned",
+      "notes": "additional information",
+      "confidence": 0.85
+    }}
+  ]
+}}
 
-Rules:
-- Only include people explicitly mentioned, not hypothetical ones
-- Leave fields empty ("") if information is not clearly stated
-- Use confidence 0.9+ only for very clear information
-- Include Dutch names and places exactly as written
-- If no clear individuals are found, return empty array []
+EXTRACTION RULES:
+1. PRIORITIZE FAMILY GROUPS - Look for "Kinderen van [parent names]" patterns
+2. LINK GENERATIONS - If text mentions "eerste/tweede generatie" note the generation number
+3. CONNECT RELATIONSHIPS - When someone is mentioned as parent in one section and child in another, note this
+4. PRESERVE CONTEXT - Include family group identifiers and generation markers
+5. USE CONFIDENCE SCORING:
+   - 0.95+ for explicit family statements like "Kinderen van Jan en Maria:"
+   - 0.85+ for clear relationships inferred from context
+   - 0.7+ for probable relationships based on names/dates/places
+6. Leave fields empty ("") if information is not clearly stated
+7. Include Dutch names and places exactly as written
+8. If no clear families are found, return empty families array []
+
+Focus on creating a family tree structure rather than isolated individuals.
 
 JSON RESPONSE:"""
     
-    def extract_from_chunk(self, text_chunk: str) -> List[Dict]:
+    def extract_from_chunk(self, text_chunk: str) -> Dict:
         """Extract genealogical data from a text chunk using LLM"""
         prompt = self.create_genealogy_prompt(text_chunk)
         
@@ -119,24 +184,32 @@ JSON RESPONSE:"""
         
         if not response:
             logger.warning("LLM extraction failed for chunk")
-            return []
+            return {"families": [], "isolated_individuals": []}
         
         try:
             # Try to parse JSON from response
             # Sometimes LLMs add extra text, so find the JSON part
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
-                people = json.loads(json_str)
-                return people if isinstance(people, list) else []
+                data = json.loads(json_str)
+                # Ensure proper structure
+                if isinstance(data, dict):
+                    return {
+                        "families": data.get("families", []),
+                        "isolated_individuals": data.get("isolated_individuals", [])
+                    }
+                else:
+                    logger.warning("Response is not a dictionary")
+                    return {"families": [], "isolated_individuals": []}
             else:
                 logger.warning("No JSON found in LLM response")
-                return []
+                return {"families": [], "isolated_individuals": []}
                 
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing failed: {e}")
             logger.error(f"Response was: {response[:500]}...")
-            return []
+            return {"families": [], "isolated_individuals": []}
     
     def split_text_intelligently(self, text: str) -> List[str]:
         """Split text into meaningful chunks for LLM processing"""
@@ -184,38 +257,74 @@ JSON RESPONSE:"""
         
         chunks = self.split_text_intelligently(content)
         
-        all_people = []
+        all_families = []
+        all_isolated_individuals = []
         
         for i, chunk in enumerate(chunks):
             logger.info(f"Processing chunk {i+1}/{len(chunks)}")
             
-            people = self.extract_from_chunk(chunk)
+            chunk_data = self.extract_from_chunk(chunk)
             
-            # Add chunk metadata
-            for person in people:
+            # Add chunk metadata to families
+            for family in chunk_data.get("families", []):
+                family['chunk_id'] = i
+                family['extraction_method'] = 'llm'
+                # Add chunk metadata to family members
+                if 'parents' in family:
+                    if 'father' in family['parents'] and family['parents']['father']:
+                        family['parents']['father']['chunk_id'] = i
+                    if 'mother' in family['parents'] and family['parents']['mother']:
+                        family['parents']['mother']['chunk_id'] = i
+                for child in family.get('children', []):
+                    child['chunk_id'] = i
+            
+            # Add chunk metadata to isolated individuals
+            for person in chunk_data.get("isolated_individuals", []):
                 person['chunk_id'] = i
                 person['extraction_method'] = 'llm'
             
-            all_people.extend(people)
+            all_families.extend(chunk_data.get("families", []))
+            all_isolated_individuals.extend(chunk_data.get("isolated_individuals", []))
             
             # Small delay to be nice to the LLM
             import time
             time.sleep(1)
         
-        self.results = all_people
-        logger.info(f"Extraction complete: found {len(all_people)} people")
+        self.results = {
+            "families": all_families,
+            "isolated_individuals": all_isolated_individuals
+        }
+        
+        total_people = sum(len(f.get('children', [])) for f in all_families)
+        total_people += sum(1 for f in all_families if f.get('parents', {}).get('father'))
+        total_people += sum(1 for f in all_families if f.get('parents', {}).get('mother'))
+        total_people += len(all_isolated_individuals)
+        
+        logger.info(f"Extraction complete: found {len(all_families)} families, {len(all_isolated_individuals)} isolated individuals, {total_people} total people")
     
     def save_results(self, output_file: str = "llm_genealogy_results.json") -> None:
         """Save LLM extraction results"""
         output_path = Path(output_file)
         
+        # Calculate statistics
+        families = self.results.get("families", [])
+        isolated_individuals = self.results.get("isolated_individuals", [])
+        
+        total_people = sum(len(f.get('children', [])) for f in families)
+        total_people += sum(1 for f in families if f.get('parents', {}).get('father'))
+        total_people += sum(1 for f in families if f.get('parents', {}).get('mother'))
+        total_people += len(isolated_individuals)
+        
         data = {
             'metadata': {
-                'total_people': len(self.results),
-                'extraction_method': 'llm_powered',
+                'total_families': len(families),
+                'total_isolated_individuals': len(isolated_individuals),
+                'total_people': total_people,
+                'extraction_method': 'llm_powered_family_focused',
                 'model_used': 'ollama_llama3.1'
             },
-            'people': self.results
+            'families': families,
+            'isolated_individuals': isolated_individuals
         }
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -225,27 +334,60 @@ JSON RESPONSE:"""
     
     def print_summary(self) -> None:
         """Print extraction summary"""
-        print(f"\nLLM Genealogy Extraction Summary:")
-        print(f"Total people extracted: {len(self.results)}")
+        families = self.results.get("families", [])
+        isolated_individuals = self.results.get("isolated_individuals", [])
         
-        if self.results:
-            # Confidence distribution
-            confidences = [p.get('confidence', 0) for p in self.results]
-            avg_confidence = sum(confidences) / len(confidences)
-            print(f"Average confidence: {avg_confidence:.2f}")
+        total_people = sum(len(f.get('children', [])) for f in families)
+        total_people += sum(1 for f in families if f.get('parents', {}).get('father'))
+        total_people += sum(1 for f in families if f.get('parents', {}).get('mother'))
+        total_people += len(isolated_individuals)
+        
+        print(f"\nLLM Genealogy Extraction Summary (Family-Focused):")
+        print(f"Total families extracted: {len(families)}")
+        print(f"Total isolated individuals: {len(isolated_individuals)}")
+        print(f"Total people extracted: {total_people}")
+        
+        if families:
+            # Family statistics
+            total_children = sum(len(f.get('children', [])) for f in families)
+            families_with_parents = sum(1 for f in families if f.get('parents', {}).get('father') or f.get('parents', {}).get('mother'))
+            families_with_generation = sum(1 for f in families if f.get('generation_number'))
             
-            # Top results
-            sorted_people = sorted(self.results, 
-                                 key=lambda p: p.get('confidence', 0), 
-                                 reverse=True)
+            print(f"Average children per family: {total_children / len(families):.1f}")
+            print(f"Families with parent info: {families_with_parents}")
+            print(f"Families with generation info: {families_with_generation}")
             
-            print(f"\nTop 15 extractions:")
-            for person in sorted_people[:15]:
+            # Top family examples
+            print(f"\nTop family examples:")
+            for i, family in enumerate(families[:5]):
+                family_id = family.get('family_id', f'Family {i+1}')
+                children_count = len(family.get('children', []))
+                generation = family.get('generation_number', 'Unknown')
+                
+                father_name = ""
+                mother_name = ""
+                if family.get('parents'):
+                    if family['parents'].get('father'):
+                        father = family['parents']['father']
+                        father_name = f"{father.get('given_names', '')} {father.get('surname', '')}".strip()
+                    if family['parents'].get('mother'):
+                        mother = family['parents']['mother']
+                        mother_name = f"{mother.get('given_names', '')} {mother.get('surname', '')}".strip()
+                
+                parents_str = f"{father_name} & {mother_name}" if father_name and mother_name else father_name or mother_name or "Unknown parents"
+                print(f"  - {family_id}: {parents_str} → {children_count} children (Gen {generation})")
+        
+        if isolated_individuals:
+            # Show some isolated individuals
+            print(f"\nSample isolated individuals:")
+            for person in isolated_individuals[:5]:
                 name = f"{person.get('given_names', '')} {person.get('surname', '')}".strip()
                 birth = f" *{person.get('birth_date', '')}" if person.get('birth_date') else ""
                 spouse = f" x {person.get('spouse_name', '')}" if person.get('spouse_name') else ""
                 conf = person.get('confidence', 0)
-                print(f"  - {name}{birth}{spouse} (conf: {conf:.2f})")
+                context = person.get('relationship_context', '')
+                context_str = f" ({context})" if context else ""
+                print(f"  - {name}{birth}{spouse} (conf: {conf:.2f}){context_str}")
 
 def main():
     print("LLM-Powered Genealogy Extraction")

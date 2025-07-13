@@ -20,13 +20,24 @@ python ocr_processor.py
 ```
 
 ### `llm_genealogy_extractor.py`
-AI-powered genealogy extraction using local LLMs (Ollama).
+AI-powered genealogy extraction using local LLMs (Ollama) with **family-focused extraction**.
 
 **Features:**
+- **Family-centric extraction**: Groups people into family units with parent-child relationships
+- **Generation linking**: Tracks generation numbers and family group identifiers (e.g., "III.2")
+- **Dutch genealogy patterns**: Specifically looks for "Kinderen van" (children of) phrases
 - Understands Dutch genealogical conventions (* birth, ~ baptism, † death, x marriage)
-- Context-aware extraction with confidence scoring
+- **Relationship preservation**: Maintains family connections and cross-references
+- Context-aware extraction with confidence scoring for relationships
 - Uses qwen2.5:7b model by default
 - Intelligent text chunking for optimal processing
+
+**Output Format:**
+The extractor now produces structured family data instead of isolated individuals:
+- `families[]`: Family groups with parents and children
+- `isolated_individuals[]`: People who couldn't be linked to families
+- Each family includes generation numbers and family identifiers
+- Parent-child relationships are explicitly preserved
 
 **Usage:**
 ```bash

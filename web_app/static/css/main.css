@@ -1,0 +1,312 @@
+/* Main CSS for Family Wiki Tools */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    background: #f8f9fa;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.header {
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+}
+
+.header h1 {
+    margin: 0 0 1rem 0;
+    color: #495057;
+    font-weight: 600;
+}
+
+.header nav {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Tool Grid Layout */
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.tool-card {
+    border: 1px solid #dee2e6;
+    padding: 1.5rem;
+    border-radius: 8px;
+    background: #f8f9fa;
+    transition: all 0.2s ease;
+}
+
+.tool-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.tool-card h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: #495057;
+    font-weight: 600;
+}
+
+.tool-card p {
+    color: #6c757d;
+    margin-bottom: 1rem;
+    font-size: 0.95em;
+}
+
+/* Buttons */
+.btn {
+    background: #007bff;
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.btn:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+}
+
+.btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-secondary {
+    background: #6c757d;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+/* Status Messages */
+.status {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.status.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* Tool Details */
+.tool-details {
+    max-width: 800px;
+}
+
+.tool-actions {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.tool-info h3 {
+    color: #495057;
+    margin-bottom: 1rem;
+}
+
+.tool-info ul {
+    color: #6c757d;
+    margin-left: 1.5rem;
+}
+
+.tool-info li {
+    margin-bottom: 0.5rem;
+}
+
+/* Progress Bar */
+.progress-container {
+    background: #e9ecef;
+    border-radius: 10px;
+    height: 24px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    height: 100%;
+    border-radius: 10px;
+    width: 0%;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent
+    );
+    animation: progress-shine 2s infinite;
+}
+
+@keyframes progress-shine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-text {
+    margin-top: 0.75rem;
+    font-size: 0.9em;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* Log Output */
+.log-output {
+    background: #1e1e1e;
+    color: #ffffff;
+    padding: 1.5rem;
+    border-radius: 8px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    max-height: 500px;
+    overflow-y: auto;
+    line-height: 1.4;
+    border: 1px solid #343a40;
+}
+
+.log-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.log-output::-webkit-scrollbar-track {
+    background: #2d3436;
+}
+
+.log-output::-webkit-scrollbar-thumb {
+    background: #636e72;
+    border-radius: 4px;
+}
+
+/* Summary Grid */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.summary-card {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border: 1px solid #dee2e6;
+    padding: 1.5rem;
+    border-radius: 8px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.summary-card h5 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.85em;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-number {
+    font-size: 2.5em;
+    font-weight: 700;
+    color: #007bff;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    body {
+        padding: 1rem;
+    }
+    
+    .container {
+        padding: 1.5rem;
+    }
+    
+    .tool-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .summary-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+    
+    .summary-number {
+        font-size: 2em;
+    }
+    
+    .header nav {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+/* Animation Classes */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
