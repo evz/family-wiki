@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Log Files</h2>
+<div class="logs-section">
+    {% if log_files %}
+        <div class="log-list">
+            {% for log_file in log_files %}
+                <div class="tool-card">
+                    <h3>{{ log_file.name }}</h3>
+                    <p>Size: {{ "%.1f"|format(log_file.size / 1024) }} KB</p>
+                    <p>Modified: {{ log_file.modified|int|datetime }}</p>
+                    <button class="btn" onclick="viewLog('{{ log_file.name }}')">View Log</button>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>No log files found. Run some tools to generate logs.</p>
+    {% endif %}
+    
+    <div id="log-viewer" style="display: none; margin-top: 2rem;">
+        <h3 id="log-title">Log Contents</h3>
+        <div id="log-content" class="log-output"></div>
+        <button class="btn btn-secondary" onclick="closeLog()">Close</button>
+    </div>
+</div>
+
+<script>
+function viewLog(filename) {
+    fetch(`/api/logs/${filename}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(`Error loading log: ${data.error}`);
+                return;
+            }
+            
+            document.getElementById('log-title').textContent = `Log: ${filename}`;
+            document.getElementById('log-content').textContent = data.content;
+            document.getElementById('log-viewer').style.display = 'block';
+            
+            if (data.showing_lines < data.total_lines) {
+                document.getElementById('log-title').textContent += ` (showing last ${data.showing_lines} of ${data.total_lines} lines)`;
+            }
+        })
+        .catch(error => {
+            alert(`Error: ${error}`);
+        });
+}
+
+function closeLog() {
+    document.getElementById('log-viewer').style.display = 'none';
+}
+</script>
+{% endblock %}

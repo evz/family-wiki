@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ tool_name }}</h2>
+<div class="tool-details">
+    <div class="tool-actions">
+        <button class="btn" onclick="runTool('{{ tool }}')" data-original-text="Run {{ tool_name }}">Run {{ tool_name }}</button>
+        <button class="btn btn-secondary" onclick="runTool('{{ tool }}', true)" data-original-text="Run Verbose">Run Verbose</button>
+        <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+    
+    <div class="tool-info">
+        {% if tool == 'ocr' %}
+            <h3>About OCR Processing</h3>
+            <p>This tool extracts text from PDF files using Optical Character Recognition (OCR) with automatic rotation detection.</p>
+            <ul>
+                <li>Processes all 101 PDF pages in the pdf_processing/pdfs/ directory</li>
+                <li>Detects and corrects rotated pages automatically</li>
+                <li>Creates individual text files for each page</li>
+                <li>Generates a consolidated text file combining all pages</li>
+            </ul>
+            <p><strong>Requirements:</strong> PDF files must be present in pdf_processing/pdfs/ directory</p>
+        {% elif tool == 'benchmark' %}
+            <h3>About Model Benchmarking</h3>
+            <p>This tool tests multiple LLM models to find the best one for genealogy data extraction from Dutch text.</p>
+            <ul>
+                <li>Tests various local LLM models (Qwen, Llama, etc.)</li>
+                <li>Evaluates extraction accuracy on sample genealogy text</li>
+                <li>Provides performance and quality metrics</li>
+                <li>Recommends the optimal model for your system</li>
+            </ul>
+            <p><strong>Requirements:</strong> Local LLM models installed (via Ollama or similar)</p>
+        {% elif tool == 'extract' %}
+            <h3>About LLM Extraction</h3>
+            <p>This tool uses AI language models to intelligently extract genealogical data from Dutch text.</p>
+            <ul>
+                <li>Processes consolidated text from OCR step</li>
+                <li>Extracts person names, dates, places, relationships</li>
+                <li>Handles Dutch naming conventions and particles</li>
+                <li>Produces structured JSON data with confidence scores</li>
+            </ul>
+            <p><strong>Requirements:</strong> Consolidated text file from OCR processing</p>
+        {% elif tool == 'gedcom' %}
+            <h3>About GEDCOM Generation</h3>
+            <p>This tool converts extracted genealogy data into standard GEDCOM format files.</p>
+            <ul>
+                <li>Reads structured data from LLM extraction</li>
+                <li>Creates GEDCOM 5.5 compatible files</li>
+                <li>Handles Dutch genealogical conventions</li>
+                <li>Can be imported into genealogy software</li>
+            </ul>
+            <p><strong>Requirements:</strong> JSON results from LLM extraction step</p>
+        {% elif tool == 'research' %}
+            <h3>About Research Questions</h3>
+            <p>This tool generates intelligent research questions based on your extracted family data.</p>
+            <ul>
+                <li>Analyzes gaps in family information</li>
+                <li>Suggests specific research directions</li>
+                <li>Identifies potential archive sources</li>
+                <li>Prioritizes questions by importance</li>
+            </ul>
+            <p><strong>Requirements:</strong> Extracted genealogy data</p>
+        {% elif tool == 'pipeline' %}
+            <h3>About Full Pipeline</h3>
+            <p>This tool runs the complete processing pipeline from PDF files to research questions.</p>
+            <ul>
+                <li>Executes all tools in sequence</li>
+                <li>Handles errors and continues where possible</li>
+                <li>Provides comprehensive logging</li>
+                <li>Suitable for complete end-to-end processing</li>
+            </ul>
+            <p><strong>Requirements:</strong> PDF files and all dependencies installed</p>
+        {% endif %}
+    </div>
+    
+    <div id="output-section" style="display: none;">
+        <h3>Output</h3>
+        <div id="tool-output" class="log-output"></div>
+    </div>
+</div>
+
+<script>
+function runTool(tool, verbose = false) {
+    const btn = event.target;
+    const originalText = btn.dataset.originalText || btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    
+    // Show output section
+    document.getElementById('output-section').style.display = 'block';
+    document.getElementById('tool-output').textContent = 'Starting...\n';
+    
+    const url = `/api/run/${tool}${verbose ? '?verbose=1' : ''}`;
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            const output = document.getElementById('tool-output');
+            if (data.success) {
+                output.textContent = `✅ Tool completed successfully!\n\nOutput:\n${data.stdout}`;
+                if (data.stderr) {
+                    output.textContent += `\n\nWarnings:\n${data.stderr}`;
+                }
+            } else {
+                output.textContent = `❌ Tool failed!\n\nError:\n${data.stderr || data.error}`;
+                if (data.stdout) {
+                    output.textContent += `\n\nOutput:\n${data.stdout}`;
+                }
+            }
+        })
+        .catch(error => {
+            document.getElementById('tool-output').textContent = `❌ Network Error: ${error}`;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        });
+}
+</script>
+{% endblock %}
