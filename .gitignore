@@ -27,14 +27,12 @@ ENV/
 env/
 
 # Testing
-.pytest_cache/
-.coverage
-htmlcov/
 .tox/
 
 # Project-specific data files
-pdf_processing/pdfs/*.pdf
-pdf_processing/extracted_text/*.txt
+web_app/pdf_processing/pdfs/*.pdf
+web_app/pdf_processing/extracted_text/*.txt
+web_app/pdf_processing/llm_genealogy_results.json
 llm_genealogy_results.json
 *.gedcom
 
@@ -45,16 +43,6 @@ logs/
 # Vim editor files
 *.swp
 *.swo
-*~
-
-# System files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 
 # Environment files
 .env
@@ -68,7 +56,79 @@ config.local.*
 temp/
 tmp/
 
-# Output files that get regenerated
+# Output files that get regenerated (if they exist)
 output/
 results/
 generated/
+
+# Node.js dependencies
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Claude-specific files
+.claude/
+.claude_history
+
+# Docker volumes and data
+docker-compose.override.yml
+.docker/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
+# Extracted text that gets regenerated
+web_app/pdf_processing/extracted_text/consolidated_text.txt
+
+# Configuration files with sensitive data
+config.local.json
+settings.local.json
+*.local.json
+
+# Jupyter Notebook files
+*.ipynb_checkpoints/
+.ipynb_checkpoints/
+
+# Additional Python cache files
+*.pyo
+*.pyd
+
+# Git
+.git/
+.gitconfig.local
+
+# Misc (duplicates removed - already covered above)

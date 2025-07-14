@@ -2,9 +2,9 @@
 Tests for genealogy data models
 """
 
-import pytest
 
-from shared_genealogy.models import Person, Family, Event
+from web_app.shared.models import Event, Family, Person
+
 
 def test_person_creation():
     """Test Person model creation"""
@@ -15,7 +15,7 @@ def test_person_creation():
         birth_date="1800-01-01",
         birth_place="Amsterdam"
     )
-    
+
     assert person.id == "person_1"
     assert person.given_names == "Jan"
     assert person.surname == "van Bulhuis"
@@ -31,7 +31,7 @@ def test_person_full_name_with_prefix():
         surname="Jansen",
         tussenvoegsel="de"
     )
-    
+
     assert person.full_name == "Maria de Jansen"
 
 def test_family_creation():
@@ -43,7 +43,7 @@ def test_family_creation():
         marriage_date="1825-06-15",
         marriage_place="Amsterdam"
     )
-    
+
     assert family.id == "family_1"
     assert family.husband_id == "person_1"
     assert family.wife_id == "person_2"
@@ -60,7 +60,7 @@ def test_event_creation():
         place="Amsterdam",
         description="Birth of Jan van Bulhuis"
     )
-    
+
     assert event.id == "event_1"
     assert event.title == "Birth of Jan van Bulhuis"
     assert event.event_type == "birth"
@@ -75,7 +75,7 @@ def test_person_str_representation():
         given_names="Jan",
         surname="van Bulhuis"
     )
-    
+
     # Test the full_name property since it's a dataclass
     assert person.full_name == "Jan van Bulhuis"
     assert person.id == "person_1"

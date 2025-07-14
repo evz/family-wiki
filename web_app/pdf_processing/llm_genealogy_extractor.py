@@ -4,36 +4,45 @@ LLM-powered genealogy extractor using local models (Ollama) or OpenAI
 """
 
 import json
-import re
-import requests
-from pathlib import Path
-from typing import Dict, List, Optional
 import logging
+import re
+from pathlib import Path
+
+import requests
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class LLMGenealogyExtractor:
-    def __init__(self, text_file: str = "extracted_text/consolidated_text.txt"):
+    def __init__(self, text_file: str = "extracted_text/consolidated_text.txt",
+                 ollama_host: str = "192.168.1.234", ollama_port: int = 11434,
+                 ollama_model: str = "aya:35b-23"):
         self.text_file = Path(text_file)
         self.results = []
-        
+
+        # Configuration
+        self.ollama_host = ollama_host
+        self.ollama_port = ollama_port
+        self.ollama_model = ollama_model
+        self.ollama_base_url = f"http://{ollama_host}:{ollama_port}"
+
         # Try to detect available LLM services
         self.check_ollama()
         self.check_openai()
-    
+
     def check_ollama(self) -> bool:
         """Check if Ollama is running locally"""
         try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=5)
             if response.status_code == 200:
                 models = response.json().get('models', [])
-                logger.info(f"Ollama available with {len(models)} models")
+                logger.info(f"Ollama available at {self.ollama_base_url} with {len(models)} models")
                 return True
-        except:
-            logger.info("Ollama not available")
+        except Exception:
+            logger.info(f"Ollama not available at {self.ollama_base_url}")
         return False
-    
+
     def check_openai(self) -> bool:
         """Check if OpenAI API key is available"""
         import os
@@ -43,11 +52,14 @@ class LLMGenealogyExtractor:
         else:
             logger.info("OpenAI API key not found")
         return False
-    
-    def query_ollama(self, prompt: str, model: str = "qwen2.5:7b") -> Optional[str]:
+
+    def query_ollama(self, prompt: str, model: str = None) -> str | None:
         """Query Ollama local LLM"""
+        if model is None:
+            model = self.ollama_model
+
         try:
-            response = requests.post("http://localhost:11434/api/generate", 
+            response = requests.post(f"{self.ollama_base_url}/api/generate",
                                    json={
                                        "model": model,
                                        "prompt": prompt,
@@ -56,22 +68,22 @@ class LLMGenealogyExtractor:
                                            "temperature": 0.1,  # Low temperature for factual extraction
                                            "top_p": 0.9
                                        }
-                                   }, 
+                                   },
                                    timeout=120)
-            
+
             if response.status_code == 200:
                 return response.json().get('response', '')
         except Exception as e:
-            logger.error(f"Ollama query failed: {e}")
+            logger.error(f"Ollama query failed at {self.ollama_base_url}: {e}")
         return None
-    
+
     def create_genealogy_prompt(self, text_chunk: str) -> str:
         """Create a specialized prompt for genealogical data extraction with family linking"""
         return f"""You are an expert Dutch genealogist. Analyze this historical family record text and extract structured family information with proper relationships.
 
 IMPORTANT CONTEXT:
 - This is Dutch genealogical text from a family book organized by generations
-- * means birth, ~ means baptism, + means death, x means marriage  
+- * means birth, ~ means baptism, + means death, x means marriage
 - Letters like "a.", "b.", "c." indicate siblings in birth order
 - Patterns like "1.1" or "III.2" indicate family groups
 - Look for phrases like "Kinderen van" (children of) to identify families
@@ -92,7 +104,7 @@ Extract family groups and relationships. Return ONLY valid JSON in this exact fo
           "surname": "family name including van/de prefixes",
           "birth_date": "date if mentioned with *",
           "birth_place": "place if mentioned with *",
-          "baptism_date": "date if mentioned with ~", 
+          "baptism_date": "date if mentioned with ~",
           "baptism_place": "place if mentioned with ~",
           "death_date": "date if mentioned with +",
           "death_place": "place if mentioned with +",
@@ -103,11 +115,11 @@ Extract family groups and relationships. Return ONLY valid JSON in this exact fo
         }},
         "mother": {{
           "given_names": "first and middle names",
-          "surname": "maiden name including van/de prefixes", 
+          "surname": "maiden name including van/de prefixes",
           "birth_date": "date if mentioned with *",
           "birth_place": "place if mentioned with *",
           "baptism_date": "date if mentioned with ~",
-          "baptism_place": "place if mentioned with ~", 
+          "baptism_place": "place if mentioned with ~",
           "death_date": "date if mentioned with +",
           "death_place": "place if mentioned with +",
           "marriage_date": "date if mentioned with x",
@@ -124,7 +136,7 @@ Extract family groups and relationships. Return ONLY valid JSON in this exact fo
           "birth_place": "place if mentioned with *",
           "baptism_date": "date if mentioned with ~",
           "baptism_place": "place if mentioned with ~",
-          "death_date": "date if mentioned with +", 
+          "death_date": "date if mentioned with +",
           "death_place": "place if mentioned with +",
           "marriage_date": "date if mentioned with x",
           "marriage_place": "place if mentioned with x",
@@ -140,14 +152,14 @@ Extract family groups and relationships. Return ONLY valid JSON in this exact fo
   ],
   "isolated_individuals": [
     {{
-      "given_names": "first and middle names", 
+      "given_names": "first and middle names",
       "surname": "family name including van/de prefixes",
       "birth_date": "date if mentioned with *",
       "birth_place": "place if mentioned with *",
       "baptism_date": "date if mentioned with ~",
       "baptism_place": "place if mentioned with ~",
       "death_date": "date if mentioned with +",
-      "death_place": "place if mentioned with +", 
+      "death_place": "place if mentioned with +",
       "marriage_date": "date if mentioned with x",
       "marriage_place": "place if mentioned with x",
       "spouse_name": "spouse name if mentioned",
@@ -174,18 +186,22 @@ EXTRACTION RULES:
 Focus on creating a family tree structure rather than isolated individuals.
 
 JSON RESPONSE:"""
-    
-    def extract_from_chunk(self, text_chunk: str) -> Dict:
+
+    def extract_from_chunk(self, text_chunk: str, custom_prompt: str = None) -> dict:
         """Extract genealogical data from a text chunk using LLM"""
-        prompt = self.create_genealogy_prompt(text_chunk)
-        
+        if custom_prompt:
+            # Use custom prompt with text substitution
+            prompt = custom_prompt.replace("{text_chunk}", text_chunk)
+        else:
+            prompt = self.create_genealogy_prompt(text_chunk)
+
         # Try Ollama first
         response = self.query_ollama(prompt)
-        
+
         if not response:
             logger.warning("LLM extraction failed for chunk")
             return {"families": [], "isolated_individuals": []}
-        
+
         try:
             # Try to parse JSON from response
             # Sometimes LLMs add extra text, so find the JSON part
@@ -205,66 +221,66 @@ JSON RESPONSE:"""
             else:
                 logger.warning("No JSON found in LLM response")
                 return {"families": [], "isolated_individuals": []}
-                
+
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing failed: {e}")
             logger.error(f"Response was: {response[:500]}...")
             return {"families": [], "isolated_individuals": []}
-    
-    def split_text_intelligently(self, text: str) -> List[str]:
+
+    def split_text_intelligently(self, text: str) -> list[str]:
         """Split text into meaningful chunks for LLM processing"""
         # Remove file markers and clean up
         text = re.sub(r'=== PAGE \d+ ===', '', text)
         text = re.sub(r'### FILE: \d+\.txt ###', '', text)
         text = re.sub(r'={20,}', '', text)
-        
+
         chunks = []
-        
+
         # Split by generation headers first
         generation_splits = re.split(r'(EERSTE|TWEEDE|DERDE|VIERDE|VIJFDE|ZESDE)\s+GENERATIE', text, flags=re.IGNORECASE)
-        
+
         current_generation = ""
-        for i, section in enumerate(generation_splits):
+        for _i, section in enumerate(generation_splits):
             section = section.strip()
             if not section:
                 continue
-            
+
             # Check if this is a generation header
             if re.match(r'(EERSTE|TWEEDE|DERDE|VIERDE|VIJFDE|ZESDE)', section, re.IGNORECASE):
                 current_generation = section + " GENERATIE"
                 continue
-            
+
             # Split further by family groups or natural breaks
             family_splits = re.split(r'(\d+\.?\d*\.\s+Kinderen van [^:]+:)', section)
-            
-            for j, subsection in enumerate(family_splits):
+
+            for _j, subsection in enumerate(family_splits):
                 subsection = subsection.strip()
                 if len(subsection) > 100:  # Only process substantial chunks
                     chunk_text = f"{current_generation}\n\n{subsection}" if current_generation else subsection
                     chunks.append(chunk_text[:4000])  # Limit chunk size for LLM
-        
+
         logger.info(f"Created {len(chunks)} text chunks for analysis")
         return chunks
-    
+
     def process_all_text(self) -> None:
         """Process the entire family book text"""
         if not self.text_file.exists():
             logger.error(f"Text file not found: {self.text_file}")
             return
-        
-        with open(self.text_file, 'r', encoding='utf-8') as f:
+
+        with open(self.text_file, encoding='utf-8') as f:
             content = f.read()
-        
+
         chunks = self.split_text_intelligently(content)
-        
+
         all_families = []
         all_isolated_individuals = []
-        
+
         for i, chunk in enumerate(chunks):
             logger.info(f"Processing chunk {i+1}/{len(chunks)}")
-            
+
             chunk_data = self.extract_from_chunk(chunk)
-            
+
             # Add chunk metadata to families
             for family in chunk_data.get("families", []):
                 family['chunk_id'] = i
@@ -277,44 +293,44 @@ JSON RESPONSE:"""
                         family['parents']['mother']['chunk_id'] = i
                 for child in family.get('children', []):
                     child['chunk_id'] = i
-            
+
             # Add chunk metadata to isolated individuals
             for person in chunk_data.get("isolated_individuals", []):
                 person['chunk_id'] = i
                 person['extraction_method'] = 'llm'
-            
+
             all_families.extend(chunk_data.get("families", []))
             all_isolated_individuals.extend(chunk_data.get("isolated_individuals", []))
-            
+
             # Small delay to be nice to the LLM
             import time
             time.sleep(1)
-        
+
         self.results = {
             "families": all_families,
             "isolated_individuals": all_isolated_individuals
         }
-        
+
         total_people = sum(len(f.get('children', [])) for f in all_families)
         total_people += sum(1 for f in all_families if f.get('parents', {}).get('father'))
         total_people += sum(1 for f in all_families if f.get('parents', {}).get('mother'))
         total_people += len(all_isolated_individuals)
-        
+
         logger.info(f"Extraction complete: found {len(all_families)} families, {len(all_isolated_individuals)} isolated individuals, {total_people} total people")
-    
+
     def save_results(self, output_file: str = "llm_genealogy_results.json") -> None:
         """Save LLM extraction results"""
         output_path = Path(output_file)
-        
+
         # Calculate statistics
         families = self.results.get("families", [])
         isolated_individuals = self.results.get("isolated_individuals", [])
-        
+
         total_people = sum(len(f.get('children', [])) for f in families)
         total_people += sum(1 for f in families if f.get('parents', {}).get('father'))
         total_people += sum(1 for f in families if f.get('parents', {}).get('mother'))
         total_people += len(isolated_individuals)
-        
+
         data = {
             'metadata': {
                 'total_families': len(families),
@@ -326,44 +342,44 @@ JSON RESPONSE:"""
             'families': families,
             'isolated_individuals': isolated_individuals
         }
-        
+
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        
+
         logger.info(f"Results saved to {output_path}")
-    
+
     def print_summary(self) -> None:
         """Print extraction summary"""
         families = self.results.get("families", [])
         isolated_individuals = self.results.get("isolated_individuals", [])
-        
+
         total_people = sum(len(f.get('children', [])) for f in families)
         total_people += sum(1 for f in families if f.get('parents', {}).get('father'))
         total_people += sum(1 for f in families if f.get('parents', {}).get('mother'))
         total_people += len(isolated_individuals)
-        
-        print(f"\nLLM Genealogy Extraction Summary (Family-Focused):")
+
+        print("\nLLM Genealogy Extraction Summary (Family-Focused):")
         print(f"Total families extracted: {len(families)}")
         print(f"Total isolated individuals: {len(isolated_individuals)}")
         print(f"Total people extracted: {total_people}")
-        
+
         if families:
             # Family statistics
             total_children = sum(len(f.get('children', [])) for f in families)
             families_with_parents = sum(1 for f in families if f.get('parents', {}).get('father') or f.get('parents', {}).get('mother'))
             families_with_generation = sum(1 for f in families if f.get('generation_number'))
-            
+
             print(f"Average children per family: {total_children / len(families):.1f}")
             print(f"Families with parent info: {families_with_parents}")
             print(f"Families with generation info: {families_with_generation}")
-            
+
             # Top family examples
-            print(f"\nTop family examples:")
+            print("\nTop family examples:")
             for i, family in enumerate(families[:5]):
                 family_id = family.get('family_id', f'Family {i+1}')
                 children_count = len(family.get('children', []))
                 generation = family.get('generation_number', 'Unknown')
-                
+
                 father_name = ""
                 mother_name = ""
                 if family.get('parents'):
@@ -373,13 +389,13 @@ JSON RESPONSE:"""
                     if family['parents'].get('mother'):
                         mother = family['parents']['mother']
                         mother_name = f"{mother.get('given_names', '')} {mother.get('surname', '')}".strip()
-                
+
                 parents_str = f"{father_name} & {mother_name}" if father_name and mother_name else father_name or mother_name or "Unknown parents"
                 print(f"  - {family_id}: {parents_str} → {children_count} children (Gen {generation})")
-        
+
         if isolated_individuals:
             # Show some isolated individuals
-            print(f"\nSample isolated individuals:")
+            print("\nSample isolated individuals:")
             for person in isolated_individuals[:5]:
                 name = f"{person.get('given_names', '')} {person.get('surname', '')}".strip()
                 birth = f" *{person.get('birth_date', '')}" if person.get('birth_date') else ""
@@ -395,14 +411,14 @@ def main():
     print("This tool uses local LLMs (Ollama) to intelligently extract genealogical data.")
     print("Install Ollama and run 'ollama pull llama3.1' first.")
     print()
-    
+
     extractor = LLMGenealogyExtractor()
     extractor.process_all_text()
     extractor.print_summary()
     extractor.save_results()
-    
-    print(f"\nResults saved! Review llm_genealogy_results.json")
-    print(f"This approach should be much more accurate than regex parsing.")
+
+    print("\nResults saved! Review llm_genealogy_results.json")
+    print("This approach should be much more accurate than regex parsing.")
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,54 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Available Tools</h2>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <h2>Available Tools</h2>
+    <button class="btn btn-secondary" onclick="refreshStatus()">🔄 Refresh Status</button>
+</div>
+
+<!-- System Status Section -->
+<div class="status-section">
+    {% if system_status.overall_status == 'ready' %}
+        <div class="status-card status-ready">
+            <h3>✅ System Ready</h3>
+            <p>All dependencies are available. You can run any tool.</p>
+        </div>
+    {% else %}
+        <div class="status-card status-warning">
+            <h3>⚠️ System Status</h3>
+            {% if not system_status.ollama.available %}
+                <div class="status-item">
+                    <strong>Ollama Server:</strong> {{ system_status.ollama.message }}
+                    {% if system_status.ollama.help %}
+                        <br><em>{{ system_status.ollama.help }}</em>
+                    {% endif %}
+                </div>
+            {% endif %}
+            {% if not system_status.text_data.available %}
+                <div class="status-item">
+                    <strong>OCR Data:</strong> {{ system_status.text_data.message }}
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+    
+    {% if system_status.ollama.available %}
+        <div class="status-card status-info">
+            <h3>🤖 Ollama Status</h3>
+            <p>{{ system_status.ollama.message }}</p>
+            {% if system_status.ollama.models %}
+                <details>
+                    <summary>Available Models ({{ system_status.ollama.models_count }})</summary>
+                    <ul>
+                        {% for model in system_status.ollama.models %}
+                            <li><code>{{ model }}</code></li>
+                        {% endfor %}
+                    </ul>
+                </details>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
 <div class="tool-grid">
     <div class="tool-card">
         <h3>OCR Processing</h3>
@@ -16,10 +64,20 @@
         <a href="{{ url_for('main.tool_page', tool='benchmark') }}" class="btn btn-secondary">Details</a>
     </div>
     
-    <div class="tool-card">
+    <div class="tool-card{% if not system_status.extraction_ready %} tool-disabled{% endif %}">
         <h3>LLM Extraction</h3>
         <p>Extract genealogical data from text using AI language models with family-focused approach.</p>
-        <button class="btn" onclick="runTool('extract')" data-original-text="Run Extraction">Run Extraction</button>
+        {% if system_status.extraction_ready %}
+            <button class="btn" onclick="runTool('extract')" data-original-text="Run Extraction">Run Extraction</button>
+        {% else %}
+            <button class="btn btn-disabled" disabled title="Requires Ollama server and OCR data">Run Extraction (Unavailable)</button>
+            {% if not system_status.ollama.available %}
+                <p class="warning-text">⚠️ Requires Ollama server</p>
+            {% endif %}
+            {% if not system_status.text_data.available %}
+                <p class="warning-text">⚠️ Requires OCR data</p>
+            {% endif %}
+        {% endif %}
         <a href="{{ url_for('main.tool_page', tool='extract') }}" class="btn btn-secondary">Details</a>
     </div>
     
@@ -41,7 +99,6 @@
         <h3>CLI Tools Available</h3>
         <p>Use Flask CLI commands for command-line access to all tools.</p>
         <p><code>flask ocr</code>, <code>flask extract</code>, <code>flask gedcom</code>, <code>flask research</code>, <code>flask benchmark</code>, <code>flask pipeline</code></p>
-        <button class="btn" onclick="showCLIHelp()" data-original-text="Show CLI Help">Show CLI Help</button>
     </div>
 </div>
 {% endblock %}

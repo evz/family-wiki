@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: family_wiki
+      POSTGRES_USER: family_wiki_user
+      POSTGRES_PASSWORD: family_wiki_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_wiki_user -d family_wiki"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      # Flask configuration
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      
+      # Database configuration
+      DATABASE_URL: postgresql://family_wiki_user:family_wiki_password@db:5432/family_wiki
+      
+      # Ollama configuration - external machine
+      OLLAMA_HOST: 192.168.1.234  # Your existing Ollama machine
+      OLLAMA_PORT: 11434
+      OLLAMA_MODEL: aya:35b-23
+    volumes:
+      # Bind mount for development - changes reflect immediately
+      - .:/app
+      # Preserve node_modules and .venv if they exist
+      - /app/node_modules
+      - /app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+    # Use host networking to access external services
+    network_mode: bridge
+    # Enable TTY for interactive debugging
+    tty: true
+    stdin_open: true
+
+volumes:
+  postgres_data:

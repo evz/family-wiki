@@ -149,6 +149,63 @@ body {
     margin-bottom: 0.5rem;
 }
 
+/* System Status Cards */
+.status-section {
+    margin-bottom: 2rem;
+}
+
+.status-card {
+    background: white;
+    border: 2px solid;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.status-ready {
+    border-color: #28a745;
+    background: #f8fff9;
+}
+
+.status-warning {
+    border-color: #ffc107;
+    background: #fffef5;
+}
+
+.status-info {
+    border-color: #17a2b8;
+    background: #f6fdff;
+}
+
+.status-item {
+    margin-bottom: 0.75rem;
+}
+
+.status-item:last-child {
+    margin-bottom: 0;
+}
+
+.warning-text {
+    color: #856404;
+    font-size: 0.9rem;
+    margin: 0.5rem 0;
+}
+
+/* Tool Card States */
+.tool-disabled {
+    opacity: 0.6;
+}
+
+.btn-disabled {
+    background: #6c757d !important;
+    cursor: not-allowed !important;
+}
+
+.btn-disabled:hover {
+    background: #6c757d !important;
+    transform: none !important;
+}
+
 /* Progress Bar */
 .progress-container {
     background: #e9ecef;

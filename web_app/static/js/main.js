@@ -2,231 +2,143 @@
  * Main JavaScript for Family Wiki Tools
  */
 
-// Global configuration
-const Config = {
-    API_BASE: '/api',
-    POLL_INTERVAL: 2000, // 2 seconds
-    TASK_TIMEOUT: 3600000 // 1 hour
-};
-
-// Utility functions
-const Utils = {
-    /**
-     * Show a status message
-     */
-    showStatus(message, type = 'info') {
-        const statusDiv = document.createElement('div');
-        statusDiv.className = `status ${type}`;
-        statusDiv.textContent = message;
-        
-        const container = document.querySelector('.container');
-        const header = container.querySelector('.header');
-        header.after(statusDiv);
-        
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            if (statusDiv.parentNode) {
-                statusDiv.remove();
-            }
-        }, 5000);
-    },
-
-    /**
-     * Format elapsed time
-     */
-    formatElapsedTime(seconds) {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        return `${minutes}m ${remainingSeconds}s`;
-    },
-
-    /**
-     * Make API request with error handling
-     */
-    async apiRequest(url, options = {}) {
-        try {
-            const response = await fetch(url, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                },
-                ...options
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            return await response.json();
-        } catch (error) {
-            console.error('API request failed:', error);
-            throw error;
-        }
-    }
-};
-
-// Tool execution for simple tools (non-extract)
-function runTool(tool, verbose = false) {
-    // Special handling for extract tool
-    if (tool === 'extract') {
-        if (window.ExtractionManager) {
-            window.ExtractionManager.startExtraction(verbose);
-        } else {
-            Utils.showStatus('Extraction manager not loaded', 'error');
-        }
+function runTool(toolName) {
+    const button = event.target;
+    const originalText = button.getAttribute('data-original-text') || button.textContent;
+    
+    // Check if button is disabled
+    if (button.disabled || button.classList.contains('btn-disabled')) {
         return;
     }
-
-    const btn = event.target;
-    const originalText = btn.dataset.originalText || btn.textContent;
     
-    btn.disabled = true;
-    btn.textContent = 'Running...';
-    
-    // Show output section if it exists
-    const outputSection = document.getElementById('output-section');
-    const toolOutput = document.getElementById('tool-output');
-    
-    if (outputSection) {
-        outputSection.style.display = 'block';
-        outputSection.classList.add('fade-in');
-    }
-    
-    if (toolOutput) {
-        toolOutput.textContent = 'Starting...\n';
-    }
-    
-    const url = `${Config.API_BASE}/run/${tool}${verbose ? '?verbose=1' : ''}`;
-    
-    Utils.apiRequest(url)
-        .then(data => {
-            if (toolOutput) {
-                if (data.success) {
-                    toolOutput.textContent = `✅ Tool completed successfully!\n\nOutput:\n${data.stdout}`;
-                    if (data.stderr) {
-                        toolOutput.textContent += `\n\nWarnings:\n${data.stderr}`;
+    // For extraction tool, check system status first
+    if (toolName === 'extract') {
+        fetch('/api/status')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.extraction_ready) {
+                    let message = 'LLM Extraction is not available:\n\n';
+                    if (!data.ollama.available) {
+                        message += `• Ollama: ${data.ollama.message}\n`;
+                        if (data.ollama.help) {
+                            message += `  ${data.ollama.help}\n`;
+                        }
                     }
-                    Utils.showStatus(`${tool} completed successfully`, 'success');
-                } else {
-                    toolOutput.textContent = `❌ Tool failed!\n\nError:\n${data.stderr || data.error}`;
-                    if (data.stdout) {
-                        toolOutput.textContent += `\n\nOutput:\n${data.stdout}`;
+                    if (!data.text_data.available) {
+                        message += `• ${data.text_data.message}\n`;
                     }
-                    Utils.showStatus(`${tool} failed`, 'error');
+                    alert(message);
+                    return;
                 }
+                // If ready, proceed with extraction
+                startToolExecution(toolName, button, originalText);
+            })
+            .catch(error => {
+                alert(`Error checking system status: ${error}`);
+            });
+    } else {
+        // For other tools, run directly
+        startToolExecution(toolName, button, originalText);
+    }
+}
+
+function startToolExecution(toolName, button, originalText) {
+    // Update button state
+    button.textContent = 'Running...';
+    button.disabled = true;
+    
+    // Make API call
+    fetch(`/api/run/${toolName}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.task_id) {
+                    // For extraction tool, start polling for status
+                    button.textContent = 'Starting...';
+                    pollExtractionStatus(data.task_id, button, originalText);
+                } else {
+                    // Show success message
+                    alert(`${toolName.toUpperCase()} completed successfully!`);
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }
+            } else {
+                // Show error
+                alert(`Error running ${toolName}: ${data.error || data.stderr}`);
+                button.textContent = originalText;
+                button.disabled = false;
             }
         })
         .catch(error => {
-            if (toolOutput) {
-                toolOutput.textContent = `❌ Network Error: ${error.message}`;
-            }
-            Utils.showStatus(`Error running ${tool}: ${error.message}`, 'error');
+            alert(`Error: ${error}`);
+            button.textContent = originalText;
+            button.disabled = false;
+        });
+}
+
+function pollExtractionStatus(taskId, button, originalText) {
+    const checkStatus = () => {
+        fetch(`/api/extraction/status/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(`Extraction error: ${data.error}`);
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    return;
+                }
+                
+                const status = data.status;
+                const progress = data.progress || 0;
+                
+                if (status === 'pending') {
+                    button.textContent = 'Pending...';
+                } else if (status === 'running') {
+                    button.textContent = `Processing... ${progress}%`;
+                } else if (status === 'completed') {
+                    button.textContent = 'Completed!';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }, 2000);
+                    
+                    // Show summary if available
+                    if (data.summary) {
+                        const summary = data.summary;
+                        alert(`Extraction completed!\n\nFamilies: ${summary.total_families}\nPeople: ${summary.total_people}\nIsolated individuals: ${summary.total_isolated_individuals}`);
+                    } else {
+                        alert('Extraction completed successfully!');
+                    }
+                    return;
+                } else if (status === 'failed') {
+                    alert(`Extraction failed: ${data.error || 'Unknown error'}`);
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    return;
+                }
+                
+                // Continue polling
+                setTimeout(checkStatus, 2000);
+            })
+            .catch(error => {
+                alert(`Error checking status: ${error}`);
+                button.textContent = originalText;
+                button.disabled = false;
+            });
+    };
+    
+    // Start polling
+    checkStatus();
+}
+
+function refreshStatus() {
+    fetch('/api/status/refresh')
+        .then(response => response.json())
+        .then(data => {
+            // Reload the page to update the status display
+            window.location.reload();
         })
-        .finally(() => {
-            btn.disabled = false;
-            btn.textContent = originalText;
+        .catch(error => {
+            alert(`Error refreshing status: ${error}`);
         });
 }
-
-// Initialize page
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Family Wiki Tools loaded');
-    
-    // Add smooth scrolling to anchor links
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }
-        });
-    });
-    
-    // Add keyboard shortcuts
-    document.addEventListener('keydown', function(e) {
-        // Ctrl/Cmd + K to focus search (if we add search later)
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            // Focus search input when we add it
-        }
-        
-        // Escape to close modals/dialogs
-        if (e.key === 'Escape') {
-            // Close any open modals
-            const openModals = document.querySelectorAll('.modal.open');
-            openModals.forEach(modal => modal.classList.remove('open'));
-        }
-    });
-});
-
-// CLI Help function
-function showCLIHelp() {
-    const helpText = `
-Family Wiki CLI Commands:
-
-Basic Commands:
-• flask ocr           - Extract text from PDFs using OCR
-• flask extract       - AI-powered genealogy extraction  
-• flask gedcom        - Generate GEDCOM files
-• flask research      - Generate research questions
-• flask benchmark     - Test LLM models
-• flask pipeline      - Run complete workflow
-• flask run           - Start web interface
-• flask status        - Check system status
-
-Options:
-• Add --verbose or -v to any command for detailed output
-• Example: flask extract --verbose
-
-Setup:
-1. source .venv/bin/activate
-2. export FLASK_APP=app.py
-3. flask --help (for more options)
-
-Web Interface: http://localhost:5000
-    `;
-    
-    // Create modal
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.5); display: flex; align-items: center; 
-        justify-content: center; z-index: 1000;
-    `;
-    
-    const content = document.createElement('div');
-    content.style.cssText = `
-        background: white; padding: 2rem; border-radius: 8px; 
-        max-width: 600px; max-height: 80vh; overflow-y: auto;
-        position: relative;
-    `;
-    
-    content.innerHTML = `
-        <h3>Family Wiki CLI Commands</h3>
-        <pre style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 4px;">${helpText}</pre>
-        <button onclick="this.closest('.modal').remove()" class="btn">Close</button>
-    `;
-    
-    modal.className = 'modal';
-    modal.appendChild(content);
-    document.body.appendChild(modal);
-    
-    // Close on background click
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-    });
-}
-
-// Export for use in other scripts
-window.FamilyWiki = {
-    Config,
-    Utils,
-    runTool
-};
-
-// Add to global scope for template use
-window.showCLIHelp = showCLIHelp;

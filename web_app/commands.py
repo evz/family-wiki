@@ -3,30 +3,29 @@ Flask CLI commands for Family Wiki tools
 """
 
 import click
-from flask import current_app
-from flask.cli import with_appcontext
 
-from web_app.services.ocr_service import ocr_service
+from web_app.services.benchmark_service import benchmark_service
 from web_app.services.extraction_service import extraction_service
 from web_app.services.gedcom_service import gedcom_service
+from web_app.services.ocr_service import ocr_service
 from web_app.services.research_service import research_service
-from web_app.services.benchmark_service import benchmark_service
+
 
 def register_commands(app):
     """Register all CLI commands with the Flask app"""
-    
+
     @app.cli.command()
     @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
     def ocr(verbose):
         """Extract text from PDF files using OCR with rotation detection."""
         click.echo("🔍 Starting OCR processing...")
-        
+
         def progress_callback(data):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
-        
+
         result = ocr_service.process_pdfs(progress_callback if verbose else None)
-        
+
         if result['success']:
             click.echo("✅ OCR processing completed successfully!")
             if verbose and 'results' in result:
@@ -34,14 +33,14 @@ def register_commands(app):
         else:
             click.echo(f"❌ OCR processing failed: {result['error']}")
             exit(1)
-    
+
     @app.cli.command('extract')
     @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
     @click.option('--text-file', help='Path to text file to process')
     def extract_genealogy(verbose, text_file):
         """Extract genealogical data using AI language models with family-focused approach."""
         click.echo("🤖 Starting LLM extraction...")
-        
+
         def progress_callback(data):
             if verbose:
                 status = data.get('status', 'unknown')
@@ -52,16 +51,16 @@ def register_commands(app):
                         click.echo(f"Processing chunk {current}/{total}")
                 else:
                     click.echo(f"Status: {status}")
-        
+
         task_id = extraction_service.start_extraction(
             text_file=text_file,
             progress_callback=progress_callback if verbose else None
         )
-        
+
         # For CLI, we wait for completion
         click.echo(f"Task ID: {task_id}")
         click.echo("Waiting for extraction to complete...")
-        
+
         # Poll for completion (simplified for CLI)
         import time
         while True:
@@ -69,22 +68,31 @@ def register_commands(app):
             if not status:
                 click.echo("❌ Task not found")
                 exit(1)
-            
+
             if status['status'] == 'completed':
                 click.echo("✅ Extraction completed successfully!")
                 if status.get('summary'):
                     summary = status['summary']
-                    click.echo(f"📊 Summary:")
+                    click.echo("📊 Summary:")
                     click.echo(f"  - Families: {summary.get('total_families', 0)}")
                     click.echo(f"  - People: {summary.get('total_people', 0)}")
                     click.echo(f"  - Isolated individuals: {summary.get('total_isolated_individuals', 0)}")
+
+                # Show database statistics
+                db_stats = extraction_service.get_database_stats()
+                if db_stats:
+                    click.echo("🗄️ Database Statistics:")
+                    click.echo(f"  - Persons: {db_stats.get('persons', 0)}")
+                    click.echo(f"  - Families: {db_stats.get('families', 0)}")
+                    click.echo(f"  - Places: {db_stats.get('places', 0)}")
+                    click.echo(f"  - Total entities: {db_stats.get('total_entities', 0)}")
                 break
             elif status['status'] == 'failed':
                 click.echo(f"❌ Extraction failed: {status.get('error', 'Unknown error')}")
                 exit(1)
-            
+
             time.sleep(2)
-    
+
     @app.cli.command()
     @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
     @click.option('--input-file', help='Input JSON file from extraction')
@@ -92,17 +100,17 @@ def register_commands(app):
     def gedcom(verbose, input_file, output_file):
         """Generate standard GEDCOM files from extracted genealogy data."""
         click.echo("📜 Starting GEDCOM generation...")
-        
+
         def progress_callback(data):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
-        
+
         result = gedcom_service.generate_gedcom(
             input_file=input_file,
             output_file=output_file,
             progress_callback=progress_callback if verbose else None
         )
-        
+
         if result['success']:
             click.echo("✅ GEDCOM generation completed successfully!")
             click.echo(f"📁 Output file: {result.get('output_file', 'family_genealogy.ged')}")
@@ -111,23 +119,23 @@ def register_commands(app):
         else:
             click.echo(f"❌ GEDCOM generation failed: {result['error']}")
             exit(1)
-    
+
     @app.cli.command()
     @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
     @click.option('--input-file', help='Input JSON file from extraction')
     def research(verbose, input_file):
         """Generate intelligent research questions from family data."""
         click.echo("🔬 Starting research question generation...")
-        
+
         def progress_callback(data):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
-        
+
         result = research_service.generate_questions(
             input_file=input_file,
             progress_callback=progress_callback if verbose else None
         )
-        
+
         if result['success']:
             click.echo("✅ Research questions generated successfully!")
             click.echo(f"📝 Total questions: {result.get('total_questions', 0)}")
@@ -139,21 +147,21 @@ def register_commands(app):
         else:
             click.echo(f"❌ Research question generation failed: {result['error']}")
             exit(1)
-    
+
     @app.cli.command()
     @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
     def benchmark(verbose):
         """Test multiple LLM models for genealogy extraction performance."""
         click.echo("⚡ Starting model benchmark...")
-        
+
         def progress_callback(data):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
-        
+
         result = benchmark_service.run_benchmark(
             progress_callback=progress_callback if verbose else None
         )
-        
+
         if result['success']:
             click.echo("✅ Model benchmark completed successfully!")
             if verbose and 'results' in result:
@@ -161,13 +169,13 @@ def register_commands(app):
         else:
             click.echo(f"❌ Model benchmark failed: {result['error']}")
             exit(1)
-    
+
     @app.cli.command()
     @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
     def pipeline(verbose):
         """Run the complete processing pipeline from OCR to research questions."""
         click.echo("🔄 Starting complete pipeline...")
-        
+
         # Step 1: OCR
         click.echo("\n📍 Step 1: OCR Processing")
         ocr_result = ocr_service.process_pdfs()
@@ -175,11 +183,11 @@ def register_commands(app):
             click.echo(f"❌ Pipeline failed at OCR: {ocr_result['error']}")
             exit(1)
         click.echo("✅ OCR completed")
-        
+
         # Step 2: Extraction
         click.echo("\n📍 Step 2: LLM Extraction")
         task_id = extraction_service.start_extraction()
-        
+
         # Wait for extraction
         import time
         while True:
@@ -191,7 +199,7 @@ def register_commands(app):
                 exit(1)
             time.sleep(2)
         click.echo("✅ Extraction completed")
-        
+
         # Step 3: GEDCOM
         click.echo("\n📍 Step 3: GEDCOM Generation")
         gedcom_result = gedcom_service.generate_gedcom()
@@ -199,7 +207,7 @@ def register_commands(app):
             click.echo(f"❌ Pipeline failed at GEDCOM: {gedcom_result['error']}")
             exit(1)
         click.echo("✅ GEDCOM completed")
-        
+
         # Step 4: Research
         click.echo("\n📍 Step 4: Research Questions")
         research_result = research_service.generate_questions()
@@ -207,39 +215,39 @@ def register_commands(app):
             click.echo(f"❌ Pipeline failed at research: {research_result['error']}")
             exit(1)
         click.echo("✅ Research completed")
-        
+
         click.echo("\n🎉 Complete pipeline finished successfully!")
-        
+
         # Summary
         if 'summary' in status:
             summary = status['summary']
-            click.echo(f"\n📊 Final Summary:")
+            click.echo("\n📊 Final Summary:")
             click.echo(f"  - Families extracted: {summary.get('total_families', 0)}")
             click.echo(f"  - People found: {summary.get('total_people', 0)}")
             click.echo(f"  - GEDCOM file: {gedcom_result.get('output_file', 'family_genealogy.ged')}")
             click.echo(f"  - Research questions: {research_result.get('total_questions', 0)}")
-    
+
     @app.cli.command()
     def status():
         """Check system status and available tools."""
         click.echo("🔍 Family Wiki Tools Status")
         click.echo("=" * 40)
-        
+
         # Check if required directories exist
         from pathlib import Path
         project_root = Path.cwd()
-        
+
         checks = {
             "PDF directory": (project_root / "pdf_processing" / "pdfs").exists(),
             "Extracted text": (project_root / "pdf_processing" / "extracted_text").exists(),
             "Logs directory": (project_root / "logs").exists(),
             "Templates": (project_root / "templates").exists(),
         }
-        
+
         for check, status in checks.items():
             icon = "✅" if status else "❌"
             click.echo(f"{icon} {check}")
-        
+
         click.echo("\n🛠️  Available Commands:")
         click.echo("  flask ocr         - Extract text from PDFs")
         click.echo("  flask extract     - AI-powered genealogy extraction")
@@ -248,5 +256,43 @@ def register_commands(app):
         click.echo("  flask benchmark   - Test LLM models")
         click.echo("  flask pipeline    - Run complete workflow")
         click.echo("  flask run         - Start web interface")
-        
+
         click.echo("\n🌐 Web Interface: http://localhost:5000")
+
+        # Show database statistics if available
+        db_stats = extraction_service.get_database_stats()
+        if db_stats:
+            click.echo("\n🗄️ Database Statistics:")
+            click.echo(f"  - Persons: {db_stats.get('persons', 0)}")
+            click.echo(f"  - Families: {db_stats.get('families', 0)}")
+            click.echo(f"  - Places: {db_stats.get('places', 0)}")
+            click.echo(f"  - Events: {db_stats.get('events', 0)}")
+            click.echo(f"  - Marriages: {db_stats.get('marriages', 0)}")
+            click.echo(f"  - Total entities: {db_stats.get('total_entities', 0)}")
+
+    @app.cli.command('db-clear')
+    @click.confirmation_option(prompt='Are you sure you want to clear all extraction data?')
+    def clear_database():
+        """Clear all extraction data from the database (for testing/development)."""
+        click.echo("🗑️ Clearing database...")
+        try:
+            from web_app.database import db
+            from web_app.database.models import Event, Family, Marriage, Person
+
+            # Delete in order to respect foreign key constraints
+            Family.query.delete()
+            Marriage.query.delete()
+            Event.query.delete()
+            Person.query.delete()
+            db.session.commit()
+
+            click.echo("✅ Database cleared successfully!")
+
+            # Show updated stats
+            db_stats = extraction_service.get_database_stats()
+            if db_stats:
+                click.echo(f"🗄️ Remaining entities: {db_stats.get('total_entities', 0)}")
+
+        except Exception as e:
+            click.echo(f"❌ Failed to clear database: {e}")
+            exit(1)
