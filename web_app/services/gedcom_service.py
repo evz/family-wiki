@@ -100,13 +100,13 @@ class GedcomService:
             input_file = input_file or "pdf_processing/llm_genealogy_results.json"
             output_file = output_file or "family_genealogy.ged"
 
-            generator = LLMGEDCOMGenerator(input_file, output_file)
+            generator = LLMGEDCOMGenerator(input_file)
 
             if progress_callback:
                 progress_callback({"status": "running", "message": "Processing family data"})
 
             # Generate GEDCOM
-            results = generator.generate()
+            results = generator.generate_gedcom(output_file)
 
             if progress_callback:
                 progress_callback({"status": "completed", "results": results})
