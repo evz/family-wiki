@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Text Corpora{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Text Corpora</h1>
+    
+    {% if corpora %}
+        <div class="row">
+            {% for corpus in corpora %}
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ corpus.name }}</h5>
+                            {% if corpus.description %}
+                                <p class="card-text">{{ corpus.description }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>No text corpora available.</p>
+    {% endif %}
+</div>
+{% endblock %}

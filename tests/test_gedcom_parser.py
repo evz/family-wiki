@@ -23,11 +23,11 @@ class TestGEDCOMParser:
     def test_parse_empty_file(self):
         """Test parsing empty GEDCOM file"""
         parser = GEDCOMParser()
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.ged', delete=False) as f:
             f.write("")
             temp_file = f.name
-        
+
         try:
             result = parser.parse_file(temp_file)
             assert result['individuals'] == {}
@@ -39,7 +39,7 @@ class TestGEDCOMParser:
     def test_parse_minimal_gedcom(self):
         """Test parsing minimal GEDCOM file"""
         parser = GEDCOMParser()
-        
+
         gedcom_content = """0 HEAD
 1 SOUR TEST
 1 GEDC
@@ -54,16 +54,16 @@ class TestGEDCOMParser:
 2 PLAC Amsterdam
 0 TRLR
 """
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.ged', delete=False) as f:
             f.write(gedcom_content)
             temp_file = f.name
-        
+
         try:
             result = parser.parse_file(temp_file)
             assert len(result['individuals']) == 1
             assert 'I001' in result['individuals']
-            
+
             individual = result['individuals']['I001']
             assert individual.given_names == "Jan"
             assert individual.surname == "Jansen"
@@ -73,7 +73,7 @@ class TestGEDCOMParser:
     def test_parse_gedcom_with_family(self):
         """Test parsing GEDCOM file with family"""
         parser = GEDCOMParser()
-        
+
         gedcom_content = """0 HEAD
 1 SOUR TEST
 1 GEDC
@@ -95,17 +95,17 @@ class TestGEDCOMParser:
 2 PLAC Amsterdam
 0 TRLR
 """
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.ged', delete=False) as f:
             f.write(gedcom_content)
             temp_file = f.name
-        
+
         try:
             result = parser.parse_file(temp_file)
             assert len(result['individuals']) == 2
             assert len(result['families']) == 1
             assert 'F001' in result['families']
-            
+
             family = result['families']['F001']
             assert family.husband_id == "I001"
             assert family.wife_id == "I002"
@@ -115,7 +115,7 @@ class TestGEDCOMParser:
     def test_parse_individual_with_multiple_events(self):
         """Test parsing individual with multiple life events"""
         parser = GEDCOMParser()
-        
+
         gedcom_content = """0 HEAD
 1 SOUR TEST
 1 GEDC
@@ -138,16 +138,16 @@ class TestGEDCOMParser:
 1 NOTE Test note
 0 TRLR
 """
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.ged', delete=False) as f:
             f.write(gedcom_content)
             temp_file = f.name
-        
+
         try:
             result = parser.parse_file(temp_file)
             assert len(result['individuals']) == 1
             assert 'I001' in result['individuals']
-            
+
             individual = result['individuals']['I001']
             # The parser may process dates differently, so just check they're not empty
             assert individual.birth_date != ""
@@ -159,7 +159,7 @@ class TestGEDCOMParser:
     def test_parse_family_with_children(self):
         """Test parsing family with children"""
         parser = GEDCOMParser()
-        
+
         gedcom_content = """0 HEAD
 1 SOUR TEST
 1 GEDC
@@ -179,16 +179,16 @@ class TestGEDCOMParser:
 2 DATE 1825-06-01
 0 TRLR
 """
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.ged', delete=False) as f:
             f.write(gedcom_content)
             temp_file = f.name
-        
+
         try:
             result = parser.parse_file(temp_file)
             assert len(result['individuals']) == 3
             assert len(result['families']) == 1
-            
+
             family = result['families']['F001']
             assert family.husband_id == "I001"
             assert family.wife_id == "I002"
@@ -199,7 +199,7 @@ class TestGEDCOMParser:
     def test_get_level_method(self):
         """Test _get_level method"""
         parser = GEDCOMParser()
-        
+
         # Test different levels
         assert parser._get_level("0 HEAD") == 0
         assert parser._get_level("1 SOUR TEST") == 1
@@ -209,12 +209,12 @@ class TestGEDCOMParser:
     def test_extract_id_from_pointer(self):
         """Test _extract_id method"""
         parser = GEDCOMParser()
-        
+
         # Test extracting ID from pointer
         assert parser._extract_id("@I001@") == "I001"
         assert parser._extract_id("@F001@") == "F001"
         assert parser._extract_id("@S001@") == "S001"
-        
+
         # Test non-pointer strings (should return None)
         assert parser._extract_id("HEAD") is None
         assert parser._extract_id("TRLR") is None
@@ -222,11 +222,11 @@ class TestGEDCOMParser:
     def test_parse_invalid_file(self):
         """Test parsing invalid file"""
         parser = GEDCOMParser()
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.ged', delete=False) as f:
             f.write("invalid gedcom content")
             temp_file = f.name
-        
+
         try:
             result = parser.parse_file(temp_file)
             # Should not crash, but may have empty results
@@ -239,7 +239,7 @@ class TestGEDCOMParser:
     def test_parse_file_not_found(self):
         """Test parsing non-existent file"""
         parser = GEDCOMParser()
-        
+
         try:
             parser.parse_file("non_existent_file.ged")
             # Should handle gracefully or raise FileNotFoundError
@@ -251,7 +251,7 @@ class TestGEDCOMParser:
     def test_split_into_records(self):
         """Test _split_into_records method"""
         parser = GEDCOMParser()
-        
+
         lines = [
             "0 HEAD",
             "1 SOUR TEST",
@@ -259,10 +259,10 @@ class TestGEDCOMParser:
             "1 NAME Jan /Jansen/",
             "0 TRLR"
         ]
-        
+
         records = parser._split_into_records(lines)
         assert len(records) >= 2  # At least HEAD and TRLR records
-        
+
         # Check that records are properly split
         assert isinstance(records, list)
         for record in records:
@@ -273,7 +273,7 @@ class TestGEDCOMParser:
     def test_parse_record_individual(self):
         """Test _parse_record for individual"""
         parser = GEDCOMParser()
-        
+
         record = [
             "0 @I001@ INDI",
             "1 NAME Jan /Jansen/",
@@ -282,9 +282,9 @@ class TestGEDCOMParser:
             "1 BIRT",
             "2 DATE 1800-01-01"
         ]
-        
+
         parser._parse_record(record)
-        
+
         assert 'I001' in parser.individuals
         individual = parser.individuals['I001']
         assert individual.given_names == "Jan"
@@ -294,7 +294,7 @@ class TestGEDCOMParser:
     def test_parse_record_family(self):
         """Test _parse_record for family"""
         parser = GEDCOMParser()
-        
+
         record = [
             "0 @F001@ FAM",
             "1 HUSB @I001@",
@@ -302,9 +302,9 @@ class TestGEDCOMParser:
             "1 MARR",
             "2 DATE 1825-06-01"
         ]
-        
+
         parser._parse_record(record)
-        
+
         assert 'F001' in parser.families
         family = parser.families['F001']
         assert family.husband_id == "I001"

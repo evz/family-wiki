@@ -9,9 +9,8 @@ from datetime import datetime, timedelta
 
 from flask import current_app
 
-from web_app.database import db
-from web_app.database.models import Event, Family, Marriage, Person, Place
 from web_app.pdf_processing.llm_genealogy_extractor import LLMGenealogyExtractor
+from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.services.prompt_service import prompt_service
 from web_app.shared.logging_config import get_project_logger
 
@@ -250,201 +249,36 @@ class ExtractionService:
     def _save_to_database(self, families: list[dict], isolated_individuals: list[dict]):
         """Save extracted data to database models"""
         try:
-            # Clear existing data for fresh extraction
-            self._clear_extraction_data()
-
-            # Create places first (they're referenced by persons)
-            place_cache = {}
-
-            # Process families
-            for family_data in families:
-                family = self._create_family_from_data(family_data, place_cache)
-                if family:
-                    db.session.add(family)
-
-            # Process isolated individuals
-            for person_data in isolated_individuals:
-                person = self._create_person_from_data(person_data, place_cache)
-                if person:
-                    db.session.add(person)
-
-            # Commit all changes
-            db.session.commit()
-            self.logger.info(f"Saved {len(families)} families and {len(isolated_individuals)} isolated individuals to database")
-
+            repository = GenealogyDataRepository()
+            result = repository.save_extraction_data(families, isolated_individuals)
+            self.logger.info(f"Saved {result['families_created']} families and {result['people_created']} individuals to database")
         except Exception as e:
             self.logger.error(f"Failed to save to database: {e}")
-            db.session.rollback()
             raise
 
     def _clear_extraction_data(self):
         """Clear existing extraction data (for fresh extractions)"""
-        # Delete in order to respect foreign key constraints
-        Family.query.delete()
-        Marriage.query.delete()
-        Event.query.delete()
-        Person.query.delete()
-        # Note: We keep places as they can be reused
+        repository = GenealogyDataRepository()
+        repository.clear_all_data()
         self.logger.info("Cleared existing extraction data")
 
-    def _create_family_from_data(self, family_data: dict, place_cache: dict) -> Family | None:
-        """Create a Family model from extracted data"""
-        try:
-            family = Family(
-                family_identifier=family_data.get('family_id'),
-                generation_number=self._parse_generation(family_data.get('generation_number')),
-                notes=family_data.get('family_notes', ''),
-                extraction_chunk_id=family_data.get('chunk_id'),
-                extraction_method=family_data.get('extraction_method', 'llm')
-            )
 
-            # Create parents
-            parents = family_data.get('parents', {})
-            if parents.get('father'):
-                father = self._create_person_from_data(parents['father'], place_cache)
-                if father:
-                    db.session.add(father)
-                    db.session.flush()  # Get the ID
-                    family.father_id = father.id
 
-            if parents.get('mother'):
-                mother = self._create_person_from_data(parents['mother'], place_cache)
-                if mother:
-                    db.session.add(mother)
-                    db.session.flush()  # Get the ID
-                    family.mother_id = mother.id
-
-            # Add family to session to get ID
-            db.session.add(family)
-            db.session.flush()
-
-            # Create children
-            for child_data in family_data.get('children', []):
-                child = self._create_person_from_data(child_data, place_cache)
-                if child:
-                    db.session.add(child)
-                    db.session.flush()
-                    family.children.append(child)
-
-            return family
-
-        except Exception as e:
-            self.logger.error(f"Failed to create family from data: {e}")
-            return None
-
-    def _create_person_from_data(self, person_data: dict, place_cache: dict) -> Person | None:
-        """Create a Person model from extracted data"""
-        try:
-            # Split Dutch names properly
-            given_names, tussenvoegsel, surname = self._parse_dutch_name(person_data)
-
-            person = Person(
-                given_names=given_names,
-                tussenvoegsel=tussenvoegsel,
-                surname=surname,
-                birth_date=person_data.get('birth_date', ''),
-                baptism_date=person_data.get('baptism_date', ''),
-                death_date=person_data.get('death_date', ''),
-                notes=person_data.get('notes', ''),
-                confidence_score=person_data.get('confidence', 0.0),
-                extraction_chunk_id=person_data.get('chunk_id'),
-                extraction_method=person_data.get('extraction_method', 'llm')
-            )
-
-            # Handle places
-            if person_data.get('birth_place'):
-                place = self._get_or_create_place(person_data['birth_place'], place_cache)
-                if place:
-                    person.birth_place_id = place.id
-
-            if person_data.get('baptism_place'):
-                place = self._get_or_create_place(person_data['baptism_place'], place_cache)
-                if place:
-                    person.baptism_place_id = place.id
-
-            if person_data.get('death_place'):
-                place = self._get_or_create_place(person_data['death_place'], place_cache)
-                if place:
-                    person.death_place_id = place.id
-
-            return person
-
-        except Exception as e:
-            self.logger.error(f"Failed to create person from data: {e}")
-            return None
-
-    def _parse_dutch_name(self, person_data: dict) -> tuple[str, str, str]:
-        """Parse Dutch names with tussenvoegsel (van, de, etc.)"""
-        given_names = person_data.get('given_names', '').strip()
-        surname = person_data.get('surname', '').strip()
-
-        # Common Dutch tussenvoegsels
-        tussenvoegsels = ['van', 'de', 'der', 'den', 'van de', 'van der', 'van den', 'te', 'ten', 'ter', 'tot']
-
-        tussenvoegsel = ''
-        clean_surname = surname
-
-        if surname:
-            # Check if surname starts with a tussenvoegsel
-            surname_lower = surname.lower()
-            for tv in sorted(tussenvoegsels, key=len, reverse=True):
-                if surname_lower.startswith(tv + ' '):
-                    tussenvoegsel = surname[:len(tv)]
-                    clean_surname = surname[len(tv):].strip()
-                    break
-
-        return given_names, tussenvoegsel, clean_surname
-
-    def _get_or_create_place(self, place_name: str, place_cache: dict) -> Place | None:
-        """Get existing place or create new one"""
-        if not place_name or not place_name.strip():
-            return None
-
-        place_name = place_name.strip()
-
-        # Check cache first
-        if place_name in place_cache:
-            return place_cache[place_name]
-
-        # Check database
-        place = Place.query.filter_by(name=place_name).first()
-        if not place:
-            place = Place(name=place_name, country='Netherlands')
-            db.session.add(place)
-            db.session.flush()  # Get the ID
-
-        place_cache[place_name] = place
-        return place
-
-    def _parse_generation(self, generation_str: str) -> int | None:
-        """Parse generation number from string"""
-        if not generation_str:
-            return None
-
-        # Try to extract number
-        import re
-        match = re.search(r'(\d+)', str(generation_str))
-        if match:
-            return int(match.group(1))
-
-        return None
 
     def get_database_stats(self) -> dict:
         """Get current database statistics"""
         try:
-            person_count = Person.query.count()
-            family_count = Family.query.count()
-            place_count = Place.query.count()
-            event_count = Event.query.count()
-            marriage_count = Marriage.query.count()
+            repository = GenealogyDataRepository()
+            stats = repository.get_database_stats()
 
+            # Convert to match expected format and add total
             return {
-                'persons': person_count,
-                'families': family_count,
-                'places': place_count,
-                'events': event_count,
-                'marriages': marriage_count,
-                'total_entities': person_count + family_count + place_count + event_count + marriage_count
+                'persons': stats['total_people'],
+                'families': stats['total_families'],
+                'places': stats['total_places'],
+                'events': stats['total_events'],
+                'marriages': stats['total_marriages'],
+                'total_entities': sum(stats.values())
             }
         except Exception as e:
             self.logger.error(f"Failed to get database stats: {e}")

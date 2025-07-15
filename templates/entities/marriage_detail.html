@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Marriage Details{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Marriage Details</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Spouse 1:</dt>
+                <dd class="col-sm-9">
+                    {% if marriage.spouse1 %}
+                        <a href="/entities/persons/{{ marriage.spouse1.id }}">
+                            {{ marriage.spouse1.given_names }} {{ marriage.spouse1.surname }}
+                        </a>
+                    {% else %}
+                        Unknown
+                    {% endif %}
+                </dd>
+                
+                <dt class="col-sm-3">Spouse 2:</dt>
+                <dd class="col-sm-9">
+                    {% if marriage.spouse2 %}
+                        <a href="/entities/persons/{{ marriage.spouse2.id }}">
+                            {{ marriage.spouse2.given_names }} {{ marriage.spouse2.surname }}
+                        </a>
+                    {% else %}
+                        Unknown
+                    {% endif %}
+                </dd>
+                
+                <dt class="col-sm-3">Marriage Date:</dt>
+                <dd class="col-sm-9">{{ marriage.marriage_date or '-' }}</dd>
+                
+                {% if marriage.marriage_place %}
+                    <dt class="col-sm-3">Marriage Place:</dt>
+                    <dd class="col-sm-9">
+                        <a href="/entities/places/{{ marriage.marriage_place.id }}">
+                            {{ marriage.marriage_place.name }}
+                        </a>
+                    </dd>
+                {% endif %}
+                
+                {% if marriage.notes %}
+                    <dt class="col-sm-3">Notes:</dt>
+                    <dd class="col-sm-9">{{ marriage.notes }}</dd>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    
+    <div class="mt-3">
+        <a href="/entities/marriages" class="btn btn-secondary">Back to Marriages</a>
+        <a href="/entities" class="btn btn-outline-secondary">All Entities</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Database Entities{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Database Entities</h1>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <h3>Entity Overview</h3>
+            {% if db_stats %}
+                <div class="card">
+                    <div class="card-body">
+                        <ul class="list-unstyled">
+                            <li><strong>Persons:</strong> {{ db_stats.persons or 0 }}</li>
+                            <li><strong>Families:</strong> {{ db_stats.families or 0 }}</li>
+                            <li><strong>Places:</strong> {{ db_stats.places or 0 }}</li>
+                            <li><strong>Events:</strong> {{ db_stats.events or 0 }}</li>
+                            <li><strong>Marriages:</strong> {{ db_stats.marriages or 0 }}</li>
+                            <li><strong>Total:</strong> {{ db_stats.total_entities or 0 }}</li>
+                        </ul>
+                    </div>
+                </div>
+            {% else %}
+                <p>No database statistics available.</p>
+            {% endif %}
+        </div>
+        
+        <div class="col-md-6">
+            <h3>Browse Entities</h3>
+            <div class="list-group">
+                <a href="/entities/persons" class="list-group-item list-group-item-action">
+                    <strong>Persons</strong>
+                    <p class="mb-1">Browse all people in the database</p>
+                </a>
+                <a href="/entities/families" class="list-group-item list-group-item-action">
+                    <strong>Families</strong>
+                    <p class="mb-1">Browse family groups</p>
+                </a>
+                <a href="/entities/places" class="list-group-item list-group-item-action">
+                    <strong>Places</strong>
+                    <p class="mb-1">Browse locations and places</p>
+                </a>
+                <a href="/entities/events" class="list-group-item list-group-item-action">
+                    <strong>Events</strong>
+                    <p class="mb-1">Browse historical events</p>
+                </a>
+                <a href="/entities/marriages" class="list-group-item list-group-item-action">
+                    <strong>Marriages</strong>
+                    <p class="mb-1">Browse marriage records</p>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

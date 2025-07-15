@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}{{ person.given_names }} {{ person.surname }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ person.given_names }}{% if person.tussenvoegsel %} {{ person.tussenvoegsel }}{% endif %} {{ person.surname }}</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Given Names:</dt>
+                <dd class="col-sm-9">{{ person.given_names or '-' }}</dd>
+                
+                {% if person.tussenvoegsel %}
+                    <dt class="col-sm-3">Tussenvoegsel:</dt>
+                    <dd class="col-sm-9">{{ person.tussenvoegsel }}</dd>
+                {% endif %}
+                
+                <dt class="col-sm-3">Surname:</dt>
+                <dd class="col-sm-9">{{ person.surname or '-' }}</dd>
+                
+                <dt class="col-sm-3">Birth Date:</dt>
+                <dd class="col-sm-9">{{ person.birth_date or '-' }}</dd>
+                
+                <dt class="col-sm-3">Baptism Date:</dt>
+                <dd class="col-sm-9">{{ person.baptism_date or '-' }}</dd>
+                
+                <dt class="col-sm-3">Death Date:</dt>
+                <dd class="col-sm-9">{{ person.death_date or '-' }}</dd>
+                
+                {% if person.notes %}
+                    <dt class="col-sm-3">Notes:</dt>
+                    <dd class="col-sm-9">{{ person.notes }}</dd>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    
+    <div class="mt-3">
+        <a href="/entities/persons" class="btn btn-secondary">Back to Persons</a>
+        <a href="/entities" class="btn btn-outline-secondary">All Entities</a>
+    </div>
+</div>
+{% endblock %}

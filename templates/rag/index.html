@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}RAG Query Interface{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>RAG Query Interface</h1>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <h3>Available Corpora</h3>
+            {% if corpora %}
+                <ul class="list-group">
+                    {% for corpus in corpora %}
+                        <li class="list-group-item">
+                            {{ corpus.name }}
+                            {% if active_corpus and corpus.id == active_corpus.id %}
+                                <span class="badge badge-primary">Active</span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No corpora available.</p>
+            {% endif %}
+        </div>
+        
+        <div class="col-md-6">
+            {% if active_corpus %}
+                <h3>Active Corpus: {{ active_corpus.name }}</h3>
+                {% if corpus_stats %}
+                    <ul class="list-unstyled">
+                        <li><strong>Total Chunks:</strong> {{ corpus_stats.total_chunks }}</li>
+                        <li><strong>Total Sources:</strong> {{ corpus_stats.total_sources }}</li>
+                        <li><strong>Avg Chunk Length:</strong> {{ corpus_stats.avg_chunk_length }}</li>
+                    </ul>
+                {% endif %}
+            {% else %}
+                <p>No active corpus selected.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Marriages{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Marriages</h1>
+    
+    {% if marriages %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Spouse 1</th>
+                        <th>Spouse 2</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for marriage in marriages %}
+                        <tr>
+                            <td>
+                                {% if marriage.spouse1 %}
+                                    {{ marriage.spouse1.given_names }} {{ marriage.spouse1.surname }}
+                                {% else %}
+                                    Unknown
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if marriage.spouse2 %}
+                                    {{ marriage.spouse2.given_names }} {{ marriage.spouse2.surname }}
+                                {% else %}
+                                    Unknown
+                                {% endif %}
+                            </td>
+                            <td>{{ marriage.marriage_date or '-' }}</td>
+                            <td>
+                                <a href="/entities/marriages/{{ marriage.id }}" class="btn btn-sm btn-primary">View</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No marriages found.</p>
+    {% endif %}
+    
+    <a href="/entities" class="btn btn-secondary">Back to Entities</a>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{{ place.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ place.name }}</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Name:</dt>
+                <dd class="col-sm-9">{{ place.name }}</dd>
+                
+                <dt class="col-sm-3">Country:</dt>
+                <dd class="col-sm-9">{{ place.country or '-' }}</dd>
+                
+                {% if place.region %}
+                    <dt class="col-sm-3">Region:</dt>
+                    <dd class="col-sm-9">{{ place.region }}</dd>
+                {% endif %}
+                
+                {% if place.notes %}
+                    <dt class="col-sm-3">Notes:</dt>
+                    <dd class="col-sm-9">{{ place.notes }}</dd>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    
+    <div class="mt-3">
+        <a href="/entities/places" class="btn btn-secondary">Back to Places</a>
+        <a href="/entities" class="btn btn-outline-secondary">All Entities</a>
+    </div>
+</div>
+{% endblock %}

@@ -66,16 +66,19 @@ class TestFlaskApp:
         response = client.get('/tools/invalid')
         assert response.status_code == 302  # Redirect to index
 
-    @patch('web_app.services.ocr_service.ocr_service.process_pdfs')
-    def test_run_ocr_api(self, mock_process, client):
+    @patch('web_app.blueprints.api_system.execute_with_progress')
+    @patch('web_app.blueprints.api_system.PDFOCRProcessor')
+    def test_run_ocr_api(self, mock_processor_class, mock_execute, client):
         """Test OCR API endpoint"""
-        mock_process.return_value = {'success': True, 'message': 'OCR completed'}
+        mock_processor = mock_processor_class.return_value
+        mock_execute.return_value = {'success': True, 'message': 'OCR completed'}
 
         response = client.get('/api/run/ocr')
         assert response.status_code == 200
         data = response.get_json()
         assert data['success'] is True
-        mock_process.assert_called_once()
+        mock_processor_class.assert_called_once()
+        mock_execute.assert_called_once()
 
     def test_run_invalid_tool_api(self, client):
         """Test invalid tool API returns error"""
@@ -87,20 +90,25 @@ class TestFlaskApp:
 class TestCLICommands:
     """Test Flask CLI commands"""
 
-    @patch('web_app.services.ocr_service.ocr_service.process_pdfs')
-    def test_ocr_command(self, mock_process, runner):
+    @patch('web_app.commands.execute_with_progress')
+    @patch('web_app.commands.PDFOCRProcessor')
+    def test_ocr_command(self, mock_processor_class, mock_execute, runner):
         """Test OCR CLI command"""
-        mock_process.return_value = {'success': True, 'results': {}}
+        mock_processor = mock_processor_class.return_value
+        mock_execute.return_value = {'success': True, 'results': {}}
 
         result = runner.invoke(args=['ocr'])
         assert result.exit_code == 0
         assert 'OCR processing completed' in result.output
-        mock_process.assert_called_once()
+        mock_processor_class.assert_called_once()
+        mock_execute.assert_called_once()
 
-    @patch('web_app.services.ocr_service.ocr_service.process_pdfs')
-    def test_ocr_command_failure(self, mock_process, runner):
+    @patch('web_app.commands.execute_with_progress')
+    @patch('web_app.commands.PDFOCRProcessor')
+    def test_ocr_command_failure(self, mock_processor_class, mock_execute, runner):
         """Test OCR CLI command failure"""
-        mock_process.return_value = {'success': False, 'error': 'OCR failed'}
+        mock_processor = mock_processor_class.return_value
+        mock_execute.return_value = {'success': False, 'error': 'OCR failed'}
 
         result = runner.invoke(args=['ocr'])
         assert result.exit_code == 1
@@ -120,29 +128,20 @@ class TestCLICommands:
         assert 'GEDCOM generation completed' in result.output
         mock_generate.assert_called_once()
 
-    @patch('web_app.services.research_service.research_service.generate_questions')
-    def test_research_command(self, mock_generate, runner):
-        """Test research CLI command"""
-        mock_generate.return_value = {
-            'success': True,
-            'questions': ['Question 1', 'Question 2'],
-            'total_questions': 2
-        }
+    # Research command testing is covered more comprehensively in test_commands.py
 
-        result = runner.invoke(args=['research'])
-        assert result.exit_code == 0
-        assert 'Research questions generated' in result.output
-        mock_generate.assert_called_once()
-
-    @patch('web_app.services.benchmark_service.benchmark_service.run_benchmark')
-    def test_benchmark_command(self, mock_benchmark, runner):
+    @patch('web_app.commands.execute_with_progress')
+    @patch('web_app.commands.GenealogyModelBenchmark')
+    def test_benchmark_command(self, mock_benchmark_class, mock_execute, runner):
         """Test benchmark CLI command"""
-        mock_benchmark.return_value = {'success': True, 'results': {}}
+        mock_benchmark = mock_benchmark_class.return_value
+        mock_execute.return_value = {'success': True, 'results': {}}
 
         result = runner.invoke(args=['benchmark'])
         assert result.exit_code == 0
         assert 'Model benchmark completed' in result.output
-        mock_benchmark.assert_called_once()
+        mock_benchmark_class.assert_called_once()
+        mock_execute.assert_called_once()
 
     def test_status_command(self, runner):
         """Test status CLI command"""
@@ -168,13 +167,16 @@ class TestCLICommands:
 
     def test_verbose_flag(self, runner):
         """Test verbose flag works with commands"""
-        with patch('web_app.services.ocr_service.ocr_service.process_pdfs') as mock_process:
-            mock_process.return_value = {'success': True, 'results': {}}
+        with patch('web_app.commands.execute_with_progress') as mock_execute, \
+             patch('web_app.commands.PDFOCRProcessor') as mock_processor_class:
+            mock_processor = mock_processor_class.return_value
+            mock_execute.return_value = {'success': True, 'results': {}}
 
             result = runner.invoke(args=['ocr', '--verbose'])
             assert result.exit_code == 0
             # Verbose flag should be passed to callback
-            mock_process.assert_called_once()
+            mock_processor_class.assert_called_once()
+            mock_execute.assert_called_once()
 
 
 class TestConfiguration:

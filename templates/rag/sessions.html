@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Query Sessions{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Query Sessions</h1>
+    
+    {% if sessions %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Session ID</th>
+                        <th>Name</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in sessions %}
+                        <tr>
+                            <td>{{ session.id }}</td>
+                            <td>{{ session.name or 'Unnamed Session' }}</td>
+                            <td>{{ session.created_at }}</td>
+                            <td>
+                                <a href="/rag/sessions/{{ session.id }}" class="btn btn-sm btn-primary">View</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No query sessions found.</p>
+    {% endif %}
+</div>
+{% endblock %}

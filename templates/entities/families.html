@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Families{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Families</h1>
+    
+    {% if families %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Family ID</th>
+                        <th>Generation</th>
+                        <th>Parents</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for family in families %}
+                        <tr>
+                            <td>{{ family.family_identifier or family.id }}</td>
+                            <td>{{ family.generation_number or '-' }}</td>
+                            <td>
+                                {% if family.father %}{{ family.father.given_names }} {{ family.father.surname }}{% endif %}
+                                {% if family.father and family.mother %} & {% endif %}
+                                {% if family.mother %}{{ family.mother.given_names }} {{ family.mother.surname }}{% endif %}
+                            </td>
+                            <td>
+                                <a href="/entities/families/{{ family.id }}" class="btn btn-sm btn-primary">View</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No families found.</p>
+    {% endif %}
+    
+    <a href="/entities" class="btn btn-secondary">Back to Entities</a>
+</div>
+{% endblock %}

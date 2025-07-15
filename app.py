@@ -8,13 +8,17 @@ from pathlib import Path
 
 from flask import Flask
 
-from web_app.blueprints.api import api
+from web_app.blueprints.api_database import api_database
+from web_app.blueprints.api_prompts import api_prompts
+from web_app.blueprints.api_rag import api_rag
+from web_app.blueprints.api_system import api_system
 from web_app.blueprints.entities import entities
 from web_app.blueprints.extraction import extraction
 from web_app.blueprints.main import main
 from web_app.blueprints.rag import rag
 from web_app.commands import register_commands
 from web_app.database import init_app as init_database
+from web_app.error_handlers import register_error_handlers
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -54,7 +58,10 @@ def create_app(config_class=Config):
 
     # Register blueprints
     app.register_blueprint(main)
-    app.register_blueprint(api)
+    app.register_blueprint(api_system)
+    app.register_blueprint(api_prompts)
+    app.register_blueprint(api_database)
+    app.register_blueprint(api_rag)
     app.register_blueprint(entities)
     app.register_blueprint(rag)
     app.register_blueprint(extraction)
@@ -64,6 +71,9 @@ def create_app(config_class=Config):
 
     # Register CLI commands
     register_commands(app)
+
+    # Register error handlers
+    register_error_handlers(app)
 
     # Configure logging
     logger = get_project_logger(__name__)

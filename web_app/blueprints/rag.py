@@ -4,6 +4,7 @@ RAG (Retrieval-Augmented Generation) blueprint for querying source documents
 
 from flask import Blueprint, render_template
 
+from web_app.database.models import QuerySession
 from web_app.services.rag_service import rag_service
 from web_app.shared.logging_config import get_project_logger
 
@@ -39,7 +40,6 @@ def corpora_list():
 @rag.route('/sessions')
 def sessions_list():
     """List all query sessions"""
-    from web_app.database.models import QuerySession
     sessions = QuerySession.query.order_by(QuerySession.created_at.desc()).all()
     return render_template('rag/sessions.html', sessions=sessions)
 
@@ -47,6 +47,5 @@ def sessions_list():
 @rag.route('/sessions/<session_id>')
 def session_detail(session_id):
     """Show query session with all queries"""
-    from web_app.database.models import QuerySession
     session = QuerySession.query.get_or_404(session_id)
     return render_template('rag/session_detail.html', session=session)

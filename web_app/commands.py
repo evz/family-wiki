@@ -4,11 +4,12 @@ Flask CLI commands for Family Wiki tools
 
 import click
 
-from web_app.services.benchmark_service import benchmark_service
+from web_app.pdf_processing.genealogy_model_benchmark import GenealogyModelBenchmark
+from web_app.pdf_processing.ocr_processor import PDFOCRProcessor
+from web_app.research_question_generator import ResearchQuestionGenerator
 from web_app.services.extraction_service import extraction_service
 from web_app.services.gedcom_service import gedcom_service
-from web_app.services.ocr_service import ocr_service
-from web_app.services.research_service import research_service
+from web_app.shared.service_utils import execute_with_progress
 
 
 def register_commands(app):
@@ -24,7 +25,12 @@ def register_commands(app):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
 
-        result = ocr_service.process_pdfs(progress_callback if verbose else None)
+        processor = PDFOCRProcessor()
+        result = execute_with_progress(
+            "OCR processing",
+            processor.process_all_pdfs,
+            progress_callback if verbose else None
+        )
 
         if result['success']:
             click.echo("✅ OCR processing completed successfully!")
@@ -131,19 +137,28 @@ def register_commands(app):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
 
-        result = research_service.generate_questions(
-            input_file=input_file,
-            progress_callback=progress_callback if verbose else None
+        # Use default file if not specified
+        input_file = input_file or "web_app/pdf_processing/llm_genealogy_results.json"
+
+        def generate_questions():
+            generator = ResearchQuestionGenerator(input_file)
+            return generator.generate_questions()
+
+        result = execute_with_progress(
+            "research question generation",
+            generate_questions,
+            progress_callback if verbose else None
         )
 
         if result['success']:
+            questions = result['results']
             click.echo("✅ Research questions generated successfully!")
-            click.echo(f"📝 Total questions: {result.get('total_questions', 0)}")
-            if verbose and 'questions' in result:
-                for i, question in enumerate(result['questions'][:5], 1):
+            click.echo(f"📝 Total questions: {len(questions)}")
+            if verbose and questions:
+                for i, question in enumerate(questions[:5], 1):
                     click.echo(f"  {i}. {question}")
-                if len(result['questions']) > 5:
-                    click.echo(f"  ... and {len(result['questions']) - 5} more")
+                if len(questions) > 5:
+                    click.echo(f"  ... and {len(questions) - 5} more")
         else:
             click.echo(f"❌ Research question generation failed: {result['error']}")
             exit(1)
@@ -158,8 +173,11 @@ def register_commands(app):
             if verbose:
                 click.echo(f"Status: {data.get('status')} - {data.get('message', '')}")
 
-        result = benchmark_service.run_benchmark(
-            progress_callback=progress_callback if verbose else None
+        benchmark = GenealogyModelBenchmark()
+        result = execute_with_progress(
+            "model benchmark",
+            benchmark.run_all_benchmarks,
+            progress_callback if verbose else None
         )
 
         if result['success']:
@@ -178,7 +196,8 @@ def register_commands(app):
 
         # Step 1: OCR
         click.echo("\n📍 Step 1: OCR Processing")
-        ocr_result = ocr_service.process_pdfs()
+        processor = PDFOCRProcessor()
+        ocr_result = execute_with_progress("OCR processing", processor.process_all_pdfs)
         if not ocr_result['success']:
             click.echo(f"❌ Pipeline failed at OCR: {ocr_result['error']}")
             exit(1)
@@ -210,7 +229,10 @@ def register_commands(app):
 
         # Step 4: Research
         click.echo("\n📍 Step 4: Research Questions")
-        research_result = research_service.generate_questions()
+        def generate_questions():
+            generator = ResearchQuestionGenerator("web_app/pdf_processing/llm_genealogy_results.json")
+            return generator.generate_questions()
+        research_result = execute_with_progress("research question generation", generate_questions)
         if not research_result['success']:
             click.echo(f"❌ Pipeline failed at research: {research_result['error']}")
             exit(1)
@@ -225,7 +247,7 @@ def register_commands(app):
             click.echo(f"  - Families extracted: {summary.get('total_families', 0)}")
             click.echo(f"  - People found: {summary.get('total_people', 0)}")
             click.echo(f"  - GEDCOM file: {gedcom_result.get('output_file', 'family_genealogy.ged')}")
-            click.echo(f"  - Research questions: {research_result.get('total_questions', 0)}")
+            click.echo(f"  - Research questions: {len(research_result.get('results', []))}")
 
     @app.cli.command()
     def status():
@@ -238,8 +260,8 @@ def register_commands(app):
         project_root = Path.cwd()
 
         checks = {
-            "PDF directory": (project_root / "pdf_processing" / "pdfs").exists(),
-            "Extracted text": (project_root / "pdf_processing" / "extracted_text").exists(),
+            "PDF directory": (project_root / "web_app" / "pdf_processing" / "pdfs").exists(),
+            "Extracted text": (project_root / "web_app" / "pdf_processing" / "extracted_text").exists(),
             "Logs directory": (project_root / "logs").exists(),
             "Templates": (project_root / "templates").exists(),
         }

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Session {{ session.id }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Query Session: {{ session.name or session.id }}</h1>
+    
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Session Details</h5>
+            <p><strong>ID:</strong> {{ session.id }}</p>
+            <p><strong>Created:</strong> {{ session.created_at }}</p>
+            {% if session.name %}
+                <p><strong>Name:</strong> {{ session.name }}</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if session.queries %}
+        <h3>Queries</h3>
+        {% for query in session.queries %}
+            <div class="card mb-2">
+                <div class="card-body">
+                    <h6 class="card-title">Query {{ loop.index }}</h6>
+                    <p class="card-text">{{ query.question }}</p>
+                    {% if query.response %}
+                        <div class="alert alert-info">
+                            <strong>Response:</strong> {{ query.response }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No queries in this session.</p>
+    {% endif %}
+    
+    <a href="/rag/sessions" class="btn btn-secondary">Back to Sessions</a>
+</div>
+{% endblock %}

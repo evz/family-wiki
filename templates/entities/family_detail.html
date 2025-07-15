@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Family {{ family.family_identifier or family.id }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Family {{ family.family_identifier or family.id }}</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Family ID:</dt>
+                <dd class="col-sm-9">{{ family.family_identifier or family.id }}</dd>
+                
+                <dt class="col-sm-3">Generation:</dt>
+                <dd class="col-sm-9">{{ family.generation_number or '-' }}</dd>
+                
+                <dt class="col-sm-3">Father:</dt>
+                <dd class="col-sm-9">
+                    {% if family.father %}
+                        <a href="/entities/persons/{{ family.father.id }}">
+                            {{ family.father.given_names }} {{ family.father.surname }}
+                        </a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+                
+                <dt class="col-sm-3">Mother:</dt>
+                <dd class="col-sm-9">
+                    {% if family.mother %}
+                        <a href="/entities/persons/{{ family.mother.id }}">
+                            {{ family.mother.given_names }} {{ family.mother.surname }}
+                        </a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </dd>
+                
+                <dt class="col-sm-3">Children:</dt>
+                <dd class="col-sm-9">
+                    {% if family.children %}
+                        <ul>
+                            {% for child in family.children %}
+                                <li>
+                                    <a href="/entities/persons/{{ child.id }}">
+                                        {{ child.given_names }} {{ child.surname }}
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        No children recorded
+                    {% endif %}
+                </dd>
+                
+                {% if family.notes %}
+                    <dt class="col-sm-3">Notes:</dt>
+                    <dd class="col-sm-9">{{ family.notes }}</dd>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    
+    <div class="mt-3">
+        <a href="/entities/families" class="btn btn-secondary">Back to Families</a>
+        <a href="/entities" class="btn btn-outline-secondary">All Entities</a>
+    </div>
+</div>
+{% endblock %}

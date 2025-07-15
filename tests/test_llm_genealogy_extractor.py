@@ -5,9 +5,8 @@ Tests for LLM genealogy extractor
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-import pytest
 import requests
 
 from web_app.pdf_processing.llm_genealogy_extractor import LLMGenealogyExtractor
@@ -21,7 +20,7 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
             assert extractor.text_file == Path("extracted_text/consolidated_text.txt")
             assert extractor.ollama_host == "192.168.1.234"
             assert extractor.ollama_port == 11434
@@ -39,7 +38,7 @@ class TestLLMGenealogyExtractor:
                 ollama_port=8080,
                 ollama_model="llama3:8b"
             )
-            
+
             assert extractor.text_file == Path("custom_text.txt")
             assert extractor.ollama_host == "localhost"
             assert extractor.ollama_port == 8080
@@ -53,10 +52,10 @@ class TestLLMGenealogyExtractor:
         mock_response.status_code = 200
         mock_response.json.return_value = {'models': [{'name': 'llama3'}, {'name': 'aya:35b-23'}]}
         mock_get.return_value = mock_response
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.check_ollama()
         assert result is True
         mock_get.assert_called_with("http://192.168.1.234:11434/api/tags", timeout=5)
@@ -65,10 +64,10 @@ class TestLLMGenealogyExtractor:
     def test_check_ollama_unavailable(self, mock_get):
         """Test Ollama availability check when service is not running"""
         mock_get.side_effect = requests.exceptions.RequestException("Connection failed")
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.check_ollama()
         assert result is False
         mock_get.assert_called_with("http://192.168.1.234:11434/api/tags", timeout=5)
@@ -79,10 +78,10 @@ class TestLLMGenealogyExtractor:
         mock_response = Mock()
         mock_response.status_code = 500
         mock_get.return_value = mock_response
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.check_ollama()
         assert result is False
 
@@ -91,7 +90,7 @@ class TestLLMGenealogyExtractor:
         """Test OpenAI availability check when API key is set"""
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.check_openai()
         assert result is True
 
@@ -100,7 +99,7 @@ class TestLLMGenealogyExtractor:
         """Test OpenAI availability check when API key is not set"""
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.check_openai()
         assert result is False
 
@@ -111,14 +110,14 @@ class TestLLMGenealogyExtractor:
         mock_response.status_code = 200
         mock_response.json.return_value = {'response': 'Test response from Ollama'}
         mock_post.return_value = mock_response
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.query_ollama("Test prompt")
         assert result == "Test response from Ollama"
-        
+
         mock_post.assert_called_once_with(
             "http://192.168.1.234:11434/api/generate",
             json={
@@ -140,14 +139,14 @@ class TestLLMGenealogyExtractor:
         mock_response.status_code = 200
         mock_response.json.return_value = {'response': 'Test response'}
         mock_post.return_value = mock_response
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.query_ollama("Test prompt", model="llama3:8b")
         assert result == "Test response"
-        
+
         # Check that custom model was used
         call_args = mock_post.call_args
         assert call_args[1]['json']['model'] == "llama3:8b"
@@ -156,11 +155,11 @@ class TestLLMGenealogyExtractor:
     def test_query_ollama_failure(self, mock_post):
         """Test Ollama query failure"""
         mock_post.side_effect = requests.exceptions.RequestException("Connection failed")
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.query_ollama("Test prompt")
         assert result is None
 
@@ -170,11 +169,11 @@ class TestLLMGenealogyExtractor:
         mock_response = Mock()
         mock_response.status_code = 500
         mock_post.return_value = mock_response
-        
+
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         result = extractor.query_ollama("Test prompt")
         assert result is None
 
@@ -183,10 +182,10 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         text_chunk = "Jan Jansen * 1800 Amsterdam"
         prompt = extractor.create_genealogy_prompt(text_chunk)
-        
+
         assert "You are an expert Dutch genealogist" in prompt
         assert "Jan Jansen * 1800 Amsterdam" in prompt
         assert "* means birth, ~ means baptism, + means death, x means marriage" in prompt
@@ -199,11 +198,11 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         # Use realistic text that will produce chunks
         text = "EERSTE GENERATIE\n\nJan Jansen * 1800 Amsterdam. Hij was een bekende koopman in de stad en had veel contacten met andere families. Hij trouwde met Maria Pieterse en samen kregen zij verschillende kinderen die allemaal een belangrijke rol speelden in de geschiedenis van de familie.\n\nTWEEDE GENERATIE\n\nPieter Jansen * 1825 Amsterdam. Zoon van Jan Jansen en Maria Pieterse. Hij volgde zijn vader op als koopman."
         chunks = extractor.split_text_intelligently(text)
-        
+
         assert isinstance(chunks, list)
         for chunk in chunks:
             assert isinstance(chunk, str)
@@ -214,11 +213,11 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         # Use realistic family text that will produce chunks
         text = "1.1. Kinderen van Jan Jansen en Maria Pieterse:\na. Pieter Jansen * 1825 Amsterdam, getrouwd met Anna de Vries\nb. Maria Jansen * 1827 Amsterdam, getrouwd met Willem van der Berg\nc. Johannes Jansen * 1829 Amsterdam, ongehuwd gestorven\n\nDeze familie was zeer prominent in de Amsterdamse samenleving en had uitgebreide handelscontacten."
         chunks = extractor.split_text_intelligently(text)
-        
+
         assert isinstance(chunks, list)
         for chunk in chunks:
             assert isinstance(chunk, str)
@@ -228,7 +227,7 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         chunks = extractor.split_text_intelligently("")
         assert len(chunks) == 0
 
@@ -237,7 +236,7 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         response = '''
         {
           "families": [
@@ -264,10 +263,10 @@ class TestLLMGenealogyExtractor:
           "isolated_individuals": []
         }
         '''
-        
+
         with patch.object(extractor, 'query_ollama', return_value=response):
             result = extractor.extract_from_chunk("Test chunk")
-            
+
         assert result is not None
         assert 'families' in result
         assert 'isolated_individuals' in result
@@ -279,11 +278,11 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         response = "This is not valid JSON"
         with patch.object(extractor, 'query_ollama', return_value=response):
             result = extractor.extract_from_chunk("Test chunk")
-            
+
         assert result is not None
         assert result == {"families": [], "isolated_individuals": []}
 
@@ -292,10 +291,10 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         with patch.object(extractor, 'query_ollama', return_value=None):
             result = extractor.extract_from_chunk("Test chunk")
-            
+
         assert result is not None
         assert result == {"families": [], "isolated_individuals": []}
 
@@ -304,13 +303,13 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         custom_prompt = "Custom prompt: {text_chunk}"
         response = '{"families": [], "isolated_individuals": []}'
-        
+
         with patch.object(extractor, 'query_ollama', return_value=response) as mock_query:
             result = extractor.extract_from_chunk("Test chunk", custom_prompt=custom_prompt)
-            
+
         assert result is not None
         # Check that custom prompt was used
         mock_query.assert_called_once_with("Custom prompt: Test chunk")
@@ -320,7 +319,7 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         response = '''
         Here is my analysis:
         
@@ -328,10 +327,10 @@ class TestLLMGenealogyExtractor:
         
         This completes the extraction.
         '''
-        
+
         with patch.object(extractor, 'query_ollama', return_value=response):
             result = extractor.extract_from_chunk("Test chunk")
-            
+
         assert result is not None
         assert 'families' in result
         assert 'isolated_individuals' in result
@@ -341,24 +340,24 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         # Results should be a dictionary after processing
         test_results = {
-            "families": [{"family_id": "1.1", "parents": {}, "children": []}], 
+            "families": [{"family_id": "1.1", "parents": {}, "children": []}],
             "isolated_individuals": [{"given_names": "Jan", "surname": "Jansen"}]
         }
         extractor.results = test_results
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             output_file = f.name
-        
+
         try:
             extractor.save_results(output_file)
-            
+
             # Verify file was created and contains correct data structure
-            with open(output_file, 'r') as f:
+            with open(output_file) as f:
                 saved_data = json.load(f)
-                
+
             assert 'metadata' in saved_data
             assert 'families' in saved_data
             assert 'isolated_individuals' in saved_data
@@ -372,20 +371,20 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         # Results start as empty list but save_results expects dictionary structure
         extractor.results = {"families": [], "isolated_individuals": []}
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             output_file = f.name
-        
+
         try:
             extractor.save_results(output_file)
-            
+
             # Verify file was created and contains empty results with proper structure
-            with open(output_file, 'r') as f:
+            with open(output_file) as f:
                 saved_data = json.load(f)
-                
+
             assert 'metadata' in saved_data
             assert 'families' in saved_data
             assert 'isolated_individuals' in saved_data
@@ -399,7 +398,7 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor(text_file="non_existent_file.txt")
-            
+
         # Should not raise an exception but results should remain as empty list
         extractor.process_all_text()
         assert extractor.results == []
@@ -410,17 +409,17 @@ class TestLLMGenealogyExtractor:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("EERSTE GENERATIE\n\nJan Jansen * 1800 Amsterdam. Hij was een bekende koopman.\n\nTWEEDE GENERATIE\n\nPieter Jansen * 1825 Amsterdam, zoon van Jan Jansen.")
             text_file = f.name
-        
+
         try:
             with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
                  patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
                 extractor = LLMGenealogyExtractor(text_file=text_file)
-                
+
             # Mock the Ollama response
             mock_response = '{"families": [], "isolated_individuals": []}'
             with patch.object(extractor, 'query_ollama', return_value=mock_response):
                 extractor.process_all_text()
-                
+
             # After processing, results should be a dictionary
             assert isinstance(extractor.results, dict)
             assert 'families' in extractor.results
@@ -433,16 +432,16 @@ class TestLLMGenealogyExtractor:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("EERSTE GENERATIE\n\nJan Jansen * 1800 Amsterdam. Hij was een bekende koopman.")
             text_file = f.name
-        
+
         try:
             with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
                  patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
                 extractor = LLMGenealogyExtractor(text_file=text_file)
-                
+
             # Mock Ollama to return None (failure)
             with patch.object(extractor, 'query_ollama', return_value=None):
                 extractor.process_all_text()
-                
+
             # Should have results with empty families/individuals due to failed queries
             assert isinstance(extractor.results, dict)
             assert 'families' in extractor.results
@@ -457,24 +456,24 @@ class TestLLMGenealogyExtractor:
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         # Add some test results in dictionary format
         extractor.results = {
-            "families": [{"family_id": "1.1", "parents": {}, "children": []}], 
+            "families": [{"family_id": "1.1", "parents": {}, "children": []}],
             "isolated_individuals": [{"given_names": "John", "surname": "Doe"}]
         }
-        
+
         # Should not raise an exception
         extractor.print_summary()
-        
+
     def test_print_summary_empty_results(self):
         """Test printing summary with empty results"""
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
              patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
             extractor = LLMGenealogyExtractor()
-            
+
         # Set empty results in dictionary format
         extractor.results = {"families": [], "isolated_individuals": []}
-        
+
         # Should not raise an exception with empty results
         extractor.print_summary()

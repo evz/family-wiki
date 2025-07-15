@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title or 'Event' }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ event.title or 'Event Details' }}</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Title:</dt>
+                <dd class="col-sm-9">{{ event.title or '-' }}</dd>
+                
+                <dt class="col-sm-3">Date:</dt>
+                <dd class="col-sm-9">{{ event.date or '-' }}</dd>
+                
+                <dt class="col-sm-3">Type:</dt>
+                <dd class="col-sm-9">{{ event.event_type or '-' }}</dd>
+                
+                {% if event.place %}
+                    <dt class="col-sm-3">Place:</dt>
+                    <dd class="col-sm-9">
+                        <a href="/entities/places/{{ event.place.id }}">
+                            {{ event.place.name }}
+                        </a>
+                    </dd>
+                {% endif %}
+                
+                {% if event.description %}
+                    <dt class="col-sm-3">Description:</dt>
+                    <dd class="col-sm-9">{{ event.description }}</dd>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    
+    <div class="mt-3">
+        <a href="/entities/events" class="btn btn-secondary">Back to Events</a>
+        <a href="/entities" class="btn btn-outline-secondary">All Entities</a>
+    </div>
+</div>
+{% endblock %}

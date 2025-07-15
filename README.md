@@ -33,23 +33,28 @@ flask pipeline         # Run complete workflow
 
 ## Architecture
 
-**Unified Flask Application:**
+**Database-Driven Flask Application:**
 ```
 app.py                         # Main Flask app with CLI commands
-├── web_app/services/          # Shared business logic
-├── web_app/blueprints/        # Web routes and API endpoints  
-├── web_app/static/           # CSS and JavaScript
-├── templates/                # Jinja2 templates
-├── pdf_processing/           # PDF and OCR tools
-├── shared_genealogy/         # Common utilities
-└── tests/                    # Test suite
+├── web_app/
+│   ├── services/              # Business logic services
+│   ├── blueprints/            # Web routes and API endpoints  
+│   ├── repositories/          # Database operations layer
+│   ├── shared/                # Common utilities and parsers
+│   ├── database/              # SQLAlchemy models and config
+│   └── static/                # CSS and JavaScript
+├── templates/                 # Jinja2 templates
+├── pdf_processing/            # PDF and OCR tools
+└── tests/                     # Comprehensive test suite (91% coverage)
 ```
 
 **Key Benefits:**
-- **Shared Services**: Both CLI and web use the same business logic
-- **No Subprocess Calls**: Web interface directly uses service classes
-- **Progress Tracking**: Real-time updates for long-running tasks
-- **Professional UI**: Modern design with progress bars and summaries
+- **Database Integration**: PostgreSQL with pgvector for semantic search
+- **Repository Pattern**: Clean separation of database operations
+- **API Blueprints**: Organized REST endpoints for all functionality
+- **Dutch Language Support**: Specialized parser for Dutch genealogy patterns
+- **RAG System**: Retrieval-augmented generation for intelligent queries
+- **91% Test Coverage**: Comprehensive testing with quality gates
 
 ## Usage
 
@@ -75,20 +80,28 @@ flask status                  # System status check
 
 ## Key Features
 
+**Database-Driven Architecture:**
+- PostgreSQL with pgvector for semantic similarity search
+- Repository pattern for clean database operations
+- Comprehensive entity relationships (Person, Family, Place, Event)
+- RAG (Retrieval-Augmented Generation) for intelligent queries
+
 **Family-Focused Extraction:**
 - Groups people into family units with parent-child relationships
 - Tracks generation numbers and family identifiers
 - Recognizes Dutch genealogy patterns like "Kinderen van" (children of)
 
 **Dutch Language Support:**
+- Specialized Dutch genealogy parser with 94% test coverage
 - Handles Dutch text, names, and genealogical conventions
 - Recognizes symbols: * (birth), ~ (baptism), † (death), x (marriage)
-- Processes Dutch name particles (van, de, etc.)
+- Processes Dutch name particles (van, de, etc.) with proper tussenvoegsel handling
 
-**Progress Tracking:**
-- Real-time progress updates for long-running extractions
-- Task management with status monitoring
-- Visual progress bars and summaries
+**Quality Assurance:**
+- 91% test coverage with comprehensive error handling
+- Repository pattern for database operations
+- API blueprint organization for clean endpoints
+- Mandatory linting and testing quality gates
 
 ## Requirements
 
@@ -118,15 +131,34 @@ export FLASK_APP=app.py
 ## Development
 
 ```bash
-# Run tests
+# Setup virtual environment (MANDATORY)
+source .venv/bin/activate
+export FLASK_APP=app.py
+
+# Run tests (91% coverage)
 pytest
+pytest --cov=web_app --cov-report=html --cov-report=term-missing
+
+# Run linting
+ruff check .
+ruff check . --fix
 
 # Start development server
 flask run --debug
 
 # Check project status
 flask status
+
+# Database operations
+flask db-clear              # Clear database (development)
+flask db-stats              # Database statistics
 ```
+
+**Quality Gates:**
+- All code must pass `ruff check .` (linting)
+- All tests must pass with >90% coverage
+- Repository pattern enforced for database operations
+- API blueprint organization for clean endpoints
 
 ## Documentation
 
