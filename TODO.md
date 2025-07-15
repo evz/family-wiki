@@ -3,7 +3,6 @@ General improvements:
 * Make sure we doing error handling correctly across the entire app
 * Flesh out research question functions. Not really sure what it's actually doing right now.
 * Flesh out wiki export. We don't have this at all yet
-yet
 
 Extraction improvements:
 * Remove code to run scripts on their own (argparse, if __name__ == "__main__", etc)

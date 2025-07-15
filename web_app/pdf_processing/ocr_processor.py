@@ -3,7 +3,6 @@
 OCR processor for family book PDFs with rotation detection and Dutch/English support
 """
 
-import argparse
 import logging
 import os
 import sys
@@ -188,32 +187,3 @@ class PDFOCRProcessor:
 
         logger.info(f"Consolidated text saved to {consolidated_path}")
 
-def main():
-    parser = argparse.ArgumentParser(description="OCR processor for family book PDFs")
-    parser.add_argument("--pdf-dir", default="pdfs", help="Directory containing PDF files")
-    parser.add_argument("--output-dir", default="extracted_text", help="Output directory for text files")
-    parser.add_argument("--single-pdf", help="Process a single PDF file")
-
-    args = parser.parse_args()
-
-    processor = PDFOCRProcessor(args.output_dir)
-
-    if args.single_pdf:
-        pdf_path = Path(args.single_pdf)
-        if pdf_path.exists():
-            text = processor.process_pdf(pdf_path)
-            output_file = processor.output_dir / f"{pdf_path.stem}.txt"
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(text)
-            print(f"Text extracted to {output_file}")
-        else:
-            print(f"PDF file not found: {pdf_path}")
-    else:
-        pdf_dir = Path(args.pdf_dir)
-        if pdf_dir.exists():
-            processor.process_all_pdfs(pdf_dir)
-        else:
-            print(f"PDF directory not found: {pdf_dir}")
-
-if __name__ == "__main__":
-    main()

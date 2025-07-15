@@ -1,0 +1,113 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files (these should be created in container or via docker-compose)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Generated files that shouldn't be in the image
+web_app/pdf_processing/pdfs/*.pdf
+web_app/pdf_processing/extracted_text/*.txt
+web_app/pdf_processing/llm_genealogy_results.json
+llm_genealogy_results.json
+*.gedcom
+output/
+results/
+generated/
+backup_*.sql
+
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files (should be in volumes)
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Docker files (don't copy Docker files into the image)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+# Note: docker/ directory IS copied - contains required entrypoint scripts
+
+# Documentation that doesn't need to be in the image
+README.md
+DOCKER.md
+*.md
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
+# Configuration files with sensitive data (use environment variables instead)
+config.local.*
+*.local.json

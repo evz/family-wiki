@@ -1,18 +1,19 @@
-#!/usr/bin/env python3
 """
-Proper benchmarking script for genealogy extraction models
+Model benchmarking service for genealogy extraction
 """
 
 import json
-import logging
+import re
 import subprocess
 import time
 
 import requests
+from flask import current_app
+
+from web_app.shared.logging_config import get_project_logger
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_project_logger(__name__)
 
 class GenealogyModelBenchmark:
     def __init__(self):
@@ -40,42 +41,50 @@ c. Jan van Zanten, * 1770, + jong""",
             }
         ]
 
-        # Models to test (ordered by likely performance for this task)
-        self.models_to_test = [
+        # Default models - can be overridden via Flask config
+        config = current_app.config
+        self.models_to_test = config.get('BENCHMARK_MODELS', [
             "qwen2.5:7b",      # Best bet for structured extraction
             "qwen2.5:3b",      # Smaller but efficient
             "llama3.2:3b",     # Good small model
             "llama3.1:8b",     # General purpose
             "mistral:7b",      # Good at following instructions
-        ]
+        ])
+
+        self.ollama_base_url = config.get('ollama_base_url', 'http://localhost:11434')
 
         self.results = {}
 
     def check_ollama_running(self) -> bool:
         """Check if Ollama is running"""
         try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=5)
             return response.status_code == 200
-        except Exception:
+        except requests.RequestException:
             return False
 
     def install_model(self, model_name: str) -> bool:
-        """Install a model"""
+        """Install a model using ollama CLI"""
         logger.info(f"Installing {model_name}...")
         try:
-            result = subprocess.run(['ollama', 'pull', model_name],
-                                  capture_output=True, text=True, timeout=600)
+            result = subprocess.run(
+                ['ollama', 'pull', model_name],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False
+            )
             success = result.returncode == 0
             if success:
-                logger.info(f"✅ {model_name} installed successfully")
+                logger.info(f"Model {model_name} installed successfully")
             else:
-                logger.error(f"❌ Failed to install {model_name}: {result.stderr}")
+                logger.error(f"Failed to install {model_name}: {result.stderr}")
             return success
         except subprocess.TimeoutExpired:
-            logger.error(f"❌ Timeout installing {model_name}")
+            logger.error(f"Timeout installing {model_name}")
             return False
-        except Exception as e:
-            logger.error(f"❌ Error installing {model_name}: {e}")
+        except subprocess.SubprocessError as e:
+            logger.error(f"Error installing {model_name}: {e}")
             return False
 
     def create_genealogy_prompt(self, text: str) -> str:
@@ -105,24 +114,24 @@ JSON:"""
     def test_model_on_case(self, model_name: str, test_case: dict) -> dict:
         """Test a model on one test case"""
         prompt = self.create_genealogy_prompt(test_case["text"])
-
         start_time = time.time()
 
         try:
-            response = requests.post("http://localhost:11434/api/generate",
-                                   json={
-                                       "model": model_name,
-                                       "prompt": prompt,
-                                       "stream": False,
-                                       "options": {
-                                           "temperature": 0.1,
-                                           "top_p": 0.9
-                                       }
-                                   },
-                                   timeout=120)
+            response = requests.post(
+                f"{self.ollama_base_url}/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "top_p": 0.9
+                    }
+                },
+                timeout=120
+            )
 
-            end_time = time.time()
-            response_time = end_time - start_time
+            response_time = time.time() - start_time
 
             if response.status_code != 200:
                 return {
@@ -132,8 +141,7 @@ JSON:"""
 
             response_text = response.json().get('response', '')
 
-            # Try to extract and parse JSON
-            import re
+            # Extract and parse JSON
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
 
             if not json_match:
@@ -149,7 +157,10 @@ JSON:"""
                 expected_people = test_case["expected_people"]
 
                 # Score based on accuracy
-                accuracy_score = min(people_found / expected_people, 1.0) if expected_people > 0 else 0
+                accuracy_score = (
+                    min(people_found / expected_people, 1.0)
+                    if expected_people > 0 else 0
+                )
 
                 return {
                     "success": True,
@@ -169,7 +180,7 @@ JSON:"""
                     "response": response_text[:200]
                 }
 
-        except Exception as e:
+        except requests.RequestException as e:
             return {
                 "error": str(e),
                 "response_time": time.time() - start_time
@@ -218,19 +229,23 @@ JSON:"""
 
         return model_results
 
-    def run_full_benchmark(self, install_models: bool = True) -> None:
-        """Run comprehensive benchmark"""
+    def run_full_benchmark(self, install_models: bool = True) -> dict:
+        """Run comprehensive benchmark
+
+        Args:
+            install_models: Whether to auto-install missing models
+
+        Returns:
+            Dict with benchmark results
+        """
         if not self.check_ollama_running():
-            logger.error("Ollama is not running. Please start it with: ollama serve")
-            return
+            raise RuntimeError("Ollama is not running. Please start it with: ollama serve")
 
         logger.info("Starting comprehensive genealogy model benchmark...")
         logger.info(f"Will test {len(self.models_to_test)} models on {len(self.test_cases)} test cases")
 
         for model_name in self.models_to_test:
-            logger.info(f"\n{'='*60}")
-            logger.info(f"TESTING MODEL: {model_name}")
-            logger.info(f"{'='*60}")
+            logger.info(f"Testing model: {model_name}")
 
             if install_models:
                 if not self.install_model(model_name):
@@ -239,67 +254,59 @@ JSON:"""
 
             self.results[model_name] = self.benchmark_model(model_name)
 
-        logger.info("\n🏁 Benchmark complete!")
+        logger.info("Benchmark complete!")
+        return self.results
 
-    def print_results(self) -> None:
-        """Print comprehensive results"""
+    def get_results_summary(self) -> dict:
+        """Get structured summary of benchmark results
+
+        Returns:
+            Dict with results summary and recommendations
+        """
         if not self.results:
-            print("No results to display")
-            return
-
-        print(f"\n{'='*80}")
-        print("GENEALOGY MODEL BENCHMARK RESULTS")
-        print(f"{'='*80}")
+            return {"error": "No results available"}
 
         # Sort by overall score
-        sorted_results = sorted(self.results.items(),
-                              key=lambda x: x[1]["overall_score"],
-                              reverse=True)
+        sorted_results = sorted(
+            self.results.items(),
+            key=lambda x: x[1]["overall_score"],
+            reverse=True
+        )
 
-        print("\n🏆 RANKING:")
+        summary = {
+            "total_models_tested": len(self.results),
+            "total_test_cases": len(self.test_cases),
+            "rankings": []
+        }
+
         for i, (model, results) in enumerate(sorted_results):
-            score = results["overall_score"]
-            success_rate = results["success_rate"] * 100
-            avg_time = results["avg_response_time"]
-            accuracy = results["avg_accuracy"] * 100
+            summary["rankings"].append({
+                "rank": i + 1,
+                "model": model,
+                "overall_score": results["overall_score"],
+                "success_rate": results["success_rate"],
+                "avg_accuracy": results["avg_accuracy"],
+                "avg_response_time": results["avg_response_time"]
+            })
 
-            medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
-
-            print(f"{medal} {model}")
-            print(f"   Overall Score: {score:.3f}")
-            print(f"   Success Rate: {success_rate:.1f}%")
-            print(f"   Avg Accuracy: {accuracy:.1f}%")
-            print(f"   Avg Time: {avg_time:.1f}s")
-            print()
-
-        # Detailed breakdown of winner
+        # Add recommendation
         if sorted_results:
-            winner_name, winner_results = sorted_results[0]
-            print(f"🎯 RECOMMENDED MODEL: {winner_name}")
-            print("   Best overall performance for Dutch genealogy extraction")
-            print(f"   To use: Update your scripts to use '{winner_name}'")
+            winner_name, _ = sorted_results[0]
+            summary["recommended_model"] = winner_name
+            summary["recommendation_reason"] = "Best overall performance for Dutch genealogy extraction"
 
-    def save_results(self, filename: str = "genealogy_benchmark_results.json") -> None:
-        """Save detailed results to JSON"""
-        with open(filename, 'w') as f:
-            json.dump(self.results, f, indent=2)
+        return summary
+
+    def save_results(self, filename: str = "genealogy_benchmark_results.json") -> str:
+        """Save detailed results to JSON
+
+        Args:
+            filename: Output filename
+
+        Returns:
+            Path to saved file
+        """
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(self.results, f, indent=2, ensure_ascii=False)
         logger.info(f"Detailed results saved to {filename}")
-
-def main():
-    print("🧬 Genealogy Model Benchmark")
-    print("This will install and test multiple models for Dutch genealogy extraction")
-    print("It may take 30-60 minutes depending on your internet speed")
-    print()
-
-    response = input("Proceed with benchmark? (y/n): ").lower().strip()
-    if response != 'y':
-        print("Benchmark cancelled")
-        return
-
-    benchmark = GenealogyModelBenchmark()
-    benchmark.run_full_benchmark(install_models=True)
-    benchmark.print_results()
-    benchmark.save_results()
-
-if __name__ == "__main__":
-    main()
+        return filename

@@ -28,25 +28,15 @@ RUN mkdir -p web_app/pdf_processing/pdfs \
     && mkdir -p templates \
     && mkdir -p web_app/static
 
+# Copy Docker scripts first
+COPY docker/ ./docker/
+RUN chmod +x docker/*.sh
+
 # Copy application files (this will be overridden by bind mount in development)
 COPY . .
 
 # Expose port
 EXPOSE 5000
 
-# Create entrypoint script
-RUN echo '#!/bin/bash\n\
-echo "Waiting for PostgreSQL..."\n\
-while ! pg_isready -h db -p 5432; do\n\
-  sleep 1\n\
-done\n\
-echo "PostgreSQL is ready!"\n\
-\n\
-# Initialize database tables\n\
-python -c "from app import create_app; app = create_app(); app.app_context().push(); from web_app.database import db; db.create_all(); print(\"Database tables created!\")"\n\
-\n\
-# Start Flask in debug mode\n\
-flask run --host=0.0.0.0 --debug' > /app/entrypoint.sh \
-    && chmod +x /app/entrypoint.sh
-
-CMD ["/app/entrypoint.sh"]
+# Use the proper entrypoint script
+CMD ["./docker/entrypoint.dev.sh"]

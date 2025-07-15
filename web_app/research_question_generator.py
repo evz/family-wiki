@@ -1,20 +1,20 @@
-#!/usr/bin/env python3
 """
 Intelligent research question generator for genealogical analysis
 """
 
 import json
-import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
 import requests
+from flask import current_app
+
+from web_app.shared.logging_config import get_project_logger
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_project_logger(__name__)
 
 @dataclass
 class ResearchQuestion:
@@ -27,10 +27,10 @@ class ResearchQuestion:
     potential_sources: list[str]
 
 class ResearchQuestionGenerator:
-    def __init__(self, text_file: str = "pdf_processing/extracted_text/consolidated_text.txt",
-                 llm_results: str = "llm_genealogy_results.json"):
-        self.text_file = Path(text_file)
-        self.llm_results_file = Path(llm_results)
+    def __init__(self, text_file: str = None, llm_results: str = None):
+        # Use Flask config for defaults
+        self.text_file = Path(text_file or "pdf_processing/extracted_text/consolidated_text.txt")
+        self.llm_results_file = Path(llm_results or "llm_genealogy_results.json")
         self.text_content = ""
         self.people_data = []
         self.research_questions = []
@@ -84,8 +84,9 @@ class ResearchQuestionGenerator:
         # Analyze completeness of data
         missing_births = [p for p in self.people_data if not p.get('birth_date')]
         missing_deaths = [p for p in self.people_data if not p.get('death_date')]
-        [p for p in self.people_data if not p.get('spouse_name') and not p.get('marriage_date')]
-        [p for p in self.people_data if not p.get('birth_place') and not p.get('baptism_place')]
+        # Note: these were unused variables - removed to fix linting
+        # missing_marriages = [p for p in self.people_data if not p.get('spouse_name') and not p.get('marriage_date')]
+        # missing_places = [p for p in self.people_data if not p.get('birth_place') and not p.get('baptism_place')]
 
         if missing_births:
             sample_names = [f"{p.get('given_names', '')} {p.get('surname', '')}" for p in missing_births[:3]]
@@ -207,10 +208,7 @@ class ResearchQuestionGenerator:
 
         # Analyze name variations
         surnames = [p.get('surname', '') for p in self.people_data if p.get('surname')]
-        surname_counts = Counter(surnames)
-
-        # Look for spelling variations
-        _ = [name for name, count in surname_counts.most_common(5)]
+        # Note: removed surname_counts usage for linting compliance
 
         # Check for van Zanten / van Santen variations
         zanten_variations = [name for name in surnames if 'zanten' in name.lower() or 'santen' in name.lower()]
@@ -323,8 +321,13 @@ class ResearchQuestionGenerator:
         return questions
 
     def query_llm_for_insights(self, text_sample: str) -> list[ResearchQuestion]:
-        """Use LLM to generate additional research insights"""
+        """Use Ollama LLM to generate additional research insights"""
         questions = []
+
+        # Get Ollama configuration from Flask app
+        config = current_app.config
+        ollama_base_url = config.get('ollama_base_url', 'http://localhost:11434')
+        ollama_model = config.get('OLLAMA_MODEL', 'qwen2.5:7b')
 
         # Create a focused prompt for research question generation
         prompt = f"""You are a genealogy research expert analyzing Dutch family history. Based on this text excerpt, identify 3-5 specific research questions that would help fill knowledge gaps or explore interesting patterns.
@@ -351,45 +354,50 @@ Return only a JSON list in this format:
 JSON:"""
 
         try:
-            response = requests.post("http://localhost:11434/api/generate",
-                                   json={
-                                       "model": "qwen2.5:7b",  # Use best available model
-                                       "prompt": prompt,
-                                       "stream": False,
-                                       "options": {"temperature": 0.3}
-                                   },
-                                   timeout=60)
+            response = requests.post(
+                f"{ollama_base_url}/api/generate",
+                json={
+                    "model": ollama_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.3}
+                },
+                timeout=60
+            )
+            response.raise_for_status()
 
-            if response.status_code == 200:
-                response_text = response.json().get('response', '')
+            response_text = response.json().get('response', '')
 
-                # Try to extract JSON
-                import re
-                json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
-                if json_match:
-                    try:
-                        llm_questions = json.loads(json_match.group(0))
+            # Extract JSON from response
+            json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+            if json_match:
+                try:
+                    llm_questions = json.loads(json_match.group(0))
 
-                        for q in llm_questions:
-                            questions.append(ResearchQuestion(
-                                category="AI-Generated Insights",
-                                question=q.get('question', ''),
-                                evidence=q.get('rationale', ''),
-                                priority="medium",
-                                research_type=q.get('research_type', 'online'),
-                                difficulty=q.get('difficulty', 'moderate'),
-                                potential_sources=["To be determined based on research type"]
-                            ))
-                    except json.JSONDecodeError:
-                        logger.warning("Could not parse LLM response as JSON")
+                    for q in llm_questions:
+                        questions.append(ResearchQuestion(
+                            category="AI-Generated Insights",
+                            question=q.get('question', ''),
+                            evidence=q.get('rationale', ''),
+                            priority="medium",
+                            research_type=q.get('research_type', 'online'),
+                            difficulty=q.get('difficulty', 'moderate'),
+                            potential_sources=["To be determined based on research type"]
+                        ))
+                except json.JSONDecodeError:
+                    logger.warning("Could not parse LLM response as JSON")
 
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning(f"LLM query failed: {e}")
 
         return questions
 
-    def generate_all_questions(self) -> None:
-        """Generate comprehensive research questions"""
+    def generate_all_questions(self) -> list[ResearchQuestion]:
+        """Generate comprehensive research questions
+
+        Returns:
+            List of generated research questions
+        """
         logger.info("Generating research questions...")
 
         self.load_data()
@@ -409,6 +417,7 @@ JSON:"""
             self.research_questions.extend(self.query_llm_for_insights(sample_text))
 
         logger.info(f"Generated {len(self.research_questions)} research questions")
+        return self.research_questions
 
     def prioritize_questions(self) -> None:
         """Sort questions by priority and feasibility"""
@@ -448,52 +457,40 @@ JSON:"""
             json.dump(questions_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Research questions saved to {output_file}")
+        return output_file
 
-    def print_summary(self) -> None:
-        """Print a summary of generated research questions"""
+    def get_summary(self) -> dict:
+        """Get a structured summary of generated research questions
+
+        Returns:
+            Dict with summary statistics and categorized questions
+        """
         if not self.research_questions:
-            print("No research questions generated")
-            return
-
-        print(f"\n{'='*80}")
-        print("RESEARCH QUESTIONS FOR VAN BULHUIS FAMILY HISTORY")
-        print(f"{'='*80}")
+            return {"total_questions": 0, "categories": {}}
 
         # Group by category
         categories = defaultdict(list)
         for q in self.research_questions:
             categories[q.category].append(q)
 
+        summary = {
+            "total_questions": len(self.research_questions),
+            "categories": {}
+        }
+
         for category, questions in categories.items():
-            print(f"\n📋 {category.upper()} ({len(questions)} questions)")
-            print("-" * 50)
+            summary["categories"][category] = {
+                "count": len(questions),
+                "sample_questions": [
+                    {
+                        "question": q.question,
+                        "priority": q.priority,
+                        "difficulty": q.difficulty,
+                        "research_type": q.research_type,
+                        "evidence": q.evidence
+                    }
+                    for q in questions[:3]  # Top 3 per category
+                ]
+            }
 
-            for i, q in enumerate(questions[:3], 1):  # Show top 3 per category
-                priority_emoji = "🔴" if q.priority == "high" else "🟡" if q.priority == "medium" else "🟢"
-                difficulty_emoji = "⭐" if q.difficulty == "easy" else "⭐⭐" if q.difficulty == "moderate" else "⭐⭐⭐"
-
-                print(f"{i}. {priority_emoji} {difficulty_emoji} {q.question}")
-                print(f"   💡 Evidence: {q.evidence}")
-                print(f"   🔍 Research type: {q.research_type}")
-                print(f"   📚 Sources: {', '.join(q.potential_sources[:2])}")
-                print()
-
-            if len(questions) > 3:
-                print(f"   ... and {len(questions) - 3} more questions in this category")
-                print()
-
-        print("\n🎯 NEXT STEPS:")
-        print("1. Review research_questions.json for complete list")
-        print("2. Start with high-priority, easy-difficulty questions")
-        print("3. Focus on archival research for missing vital records")
-        print("4. Explore historical context for broader understanding")
-
-def main():
-    generator = ResearchQuestionGenerator()
-    generator.generate_all_questions()
-    generator.prioritize_questions()
-    generator.print_summary()
-    generator.save_questions()
-
-if __name__ == "__main__":
-    main()
+        return summary

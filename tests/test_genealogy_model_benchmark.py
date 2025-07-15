@@ -8,33 +8,60 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
 import requests
 
+from app import create_app
 from web_app.pdf_processing.genealogy_model_benchmark import GenealogyModelBenchmark
+
+
+class TestConfig:
+    """Test configuration"""
+    SECRET_KEY = 'test-secret-key'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    TESTING = True
+    OLLAMA_HOST = 'localhost'
+    OLLAMA_PORT = 11434
+    OLLAMA_MODEL = 'test-model'
+
+    @property
+    def ollama_base_url(self):
+        """Construct full Ollama URL"""
+        return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"
+
+
+@pytest.fixture
+def app():
+    """Create test Flask application"""
+    app = create_app(TestConfig)
+    return app
 
 
 class TestGenealogyModelBenchmark:
     """Test genealogy model benchmark functionality"""
 
-    def test_initialization(self):
+    def test_initialization(self, app):
         """Test benchmark initialization"""
-        benchmark = GenealogyModelBenchmark()
+        with app.app_context():
+            benchmark = GenealogyModelBenchmark()
 
-        assert len(benchmark.test_cases) == 3
-        assert len(benchmark.models_to_test) == 5
-        assert benchmark.results == {}
+            assert len(benchmark.test_cases) == 3
+            assert len(benchmark.models_to_test) == 5
+            assert benchmark.results == {}
 
-        # Check test cases structure
-        for test_case in benchmark.test_cases:
-            assert 'name' in test_case
-            assert 'text' in test_case
-            assert 'expected_people' in test_case
-            assert isinstance(test_case['expected_people'], int)
-            assert test_case['expected_people'] > 0
+            # Check test cases structure
+            for test_case in benchmark.test_cases:
+                assert 'name' in test_case
+                assert 'text' in test_case
+                assert 'expected_people' in test_case
+                assert isinstance(test_case['expected_people'], int)
+                assert test_case['expected_people'] > 0
 
-    def test_test_cases_content(self):
+    def test_test_cases_content(self, app):
         """Test test cases have expected content"""
-        benchmark = GenealogyModelBenchmark()
+        with app.app_context():
+            benchmark = GenealogyModelBenchmark()
 
         # First test case
         test_case = benchmark.test_cases[0]
@@ -55,9 +82,10 @@ class TestGenealogyModelBenchmark:
         assert "IV.3. Kinderen van" in test_case['text']
         assert test_case['expected_people'] == 3
 
-    def test_models_to_test_list(self):
+    def test_models_to_test_list(self, app):
         """Test models list is properly configured"""
-        benchmark = GenealogyModelBenchmark()
+        with app.app_context():
+            benchmark = GenealogyModelBenchmark()
 
         expected_models = [
             "qwen2.5:7b",

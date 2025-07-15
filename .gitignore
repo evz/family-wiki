@@ -95,6 +95,9 @@ coverage.xml
 # Docker volumes and data
 docker-compose.override.yml
 .docker/
+backup_*.sql
+nginx.conf
+ssl/
 
 # OS generated files
 .DS_Store

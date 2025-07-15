@@ -348,77 +348,67 @@ JSON RESPONSE:"""
 
         logger.info(f"Results saved to {output_path}")
 
-    def print_summary(self) -> None:
-        """Print extraction summary"""
+    def get_extraction_summary(self) -> dict:
+        """Get extraction summary as structured data"""
         families = self.results.get("families", [])
         isolated_individuals = self.results.get("isolated_individuals", [])
+        total_people = self._calculate_total_people(self.results)
 
-        total_people = sum(len(f.get('children', [])) for f in families)
-        total_people += sum(1 for f in families if f.get('parents', {}).get('father'))
-        total_people += sum(1 for f in families if f.get('parents', {}).get('mother'))
-        total_people += len(isolated_individuals)
-
-        print("\nLLM Genealogy Extraction Summary (Family-Focused):")
-        print(f"Total families extracted: {len(families)}")
-        print(f"Total isolated individuals: {len(isolated_individuals)}")
-        print(f"Total people extracted: {total_people}")
+        summary = {
+            'total_families': len(families),
+            'total_isolated_individuals': len(isolated_individuals),
+            'total_people': total_people
+        }
 
         if families:
-            # Family statistics
             total_children = sum(len(f.get('children', [])) for f in families)
-            families_with_parents = sum(1 for f in families if f.get('parents', {}).get('father') or f.get('parents', {}).get('mother'))
+            families_with_parents = sum(1 for f in families
+                                      if f.get('parents', {}).get('father') or f.get('parents', {}).get('mother'))
             families_with_generation = sum(1 for f in families if f.get('generation_number'))
 
-            print(f"Average children per family: {total_children / len(families):.1f}")
-            print(f"Families with parent info: {families_with_parents}")
-            print(f"Families with generation info: {families_with_generation}")
-
-            # Top family examples
-            print("\nTop family examples:")
-            for i, family in enumerate(families[:5]):
-                family_id = family.get('family_id', f'Family {i+1}')
-                children_count = len(family.get('children', []))
-                generation = family.get('generation_number', 'Unknown')
-
-                father_name = ""
-                mother_name = ""
-                if family.get('parents'):
-                    if family['parents'].get('father'):
-                        father = family['parents']['father']
-                        father_name = f"{father.get('given_names', '')} {father.get('surname', '')}".strip()
-                    if family['parents'].get('mother'):
-                        mother = family['parents']['mother']
-                        mother_name = f"{mother.get('given_names', '')} {mother.get('surname', '')}".strip()
-
-                parents_str = f"{father_name} & {mother_name}" if father_name and mother_name else father_name or mother_name or "Unknown parents"
-                print(f"  - {family_id}: {parents_str} → {children_count} children (Gen {generation})")
+            summary.update({
+                'average_children_per_family': total_children / len(families) if families else 0,
+                'families_with_parents': families_with_parents,
+                'families_with_generation': families_with_generation,
+                'sample_families': self._get_sample_families(families[:3])
+            })
 
         if isolated_individuals:
-            # Show some isolated individuals
-            print("\nSample isolated individuals:")
-            for person in isolated_individuals[:5]:
-                name = f"{person.get('given_names', '')} {person.get('surname', '')}".strip()
-                birth = f" *{person.get('birth_date', '')}" if person.get('birth_date') else ""
-                spouse = f" x {person.get('spouse_name', '')}" if person.get('spouse_name') else ""
-                conf = person.get('confidence', 0)
-                context = person.get('relationship_context', '')
-                context_str = f" ({context})" if context else ""
-                print(f"  - {name}{birth}{spouse} (conf: {conf:.2f}){context_str}")
+            summary['sample_isolated'] = self._get_sample_isolated(isolated_individuals[:3])
 
-def main():
-    print("LLM-Powered Genealogy Extraction")
-    print("=" * 40)
-    print("This tool uses local LLMs (Ollama) to intelligently extract genealogical data.")
-    print("Install Ollama and run 'ollama pull llama3.1' first.")
-    print()
+        return summary
 
-    extractor = LLMGenealogyExtractor()
-    extractor.process_all_text()
-    extractor.print_summary()
-    extractor.save_results()
+    def _get_sample_families(self, families: list) -> list:
+        """Get sample family data for summary"""
+        samples = []
+        for i, family in enumerate(families):
+            father_name = ""
+            mother_name = ""
+            if family.get('parents'):
+                if family['parents'].get('father'):
+                    father = family['parents']['father']
+                    father_name = f"{father.get('given_names', '')} {father.get('surname', '')}".strip()
+                if family['parents'].get('mother'):
+                    mother = family['parents']['mother']
+                    mother_name = f"{mother.get('given_names', '')} {mother.get('surname', '')}".strip()
 
-    print("\nResults saved! Review llm_genealogy_results.json")
-    print("This approach should be much more accurate than regex parsing.")
+            samples.append({
+                'family_id': family.get('family_id', f'Family {i+1}'),
+                'parents': f"{father_name} & {mother_name}" if father_name and mother_name else father_name or mother_name or "Unknown",
+                'children_count': len(family.get('children', [])),
+                'generation': family.get('generation_number', 'Unknown')
+            })
+        return samples
 
-if __name__ == "__main__":
-    main()
+    def _get_sample_isolated(self, individuals: list) -> list:
+        """Get sample isolated individual data for summary"""
+        samples = []
+        for person in individuals:
+            name = f"{person.get('given_names', '')} {person.get('surname', '')}".strip()
+            samples.append({
+                'name': name,
+                'birth_date': person.get('birth_date', ''),
+                'confidence': person.get('confidence', 0),
+                'context': person.get('relationship_context', '')
+            })
+        return samples

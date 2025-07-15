@@ -1,8 +1,9 @@
-version: '3.8'
+# Docker Compose file for Family Wiki development environment
+# Note: 'version' field is obsolete in Docker Compose V2 and has been removed
 
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: family_wiki
       POSTGRES_USER: family_wiki_user
@@ -14,9 +15,13 @@ services:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U family_wiki_user -d family_wiki"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - family-wiki-network
 
   web:
     build: .
@@ -32,23 +37,46 @@ services:
       DATABASE_URL: postgresql://family_wiki_user:family_wiki_password@db:5432/family_wiki
       
       # Ollama configuration - external machine
-      OLLAMA_HOST: 192.168.1.234  # Your existing Ollama machine
-      OLLAMA_PORT: 11434
-      OLLAMA_MODEL: aya:35b-23
+      OLLAMA_HOST: ${OLLAMA_HOST:-192.168.1.234}  # Can be overridden via .env
+      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-aya:35b-23}
+      
+      # Additional configuration
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      WTF_CSRF_ENABLED: ${WTF_CSRF_ENABLED:-True}
     volumes:
       # Bind mount for development - changes reflect immediately
       - .:/app
       # Preserve node_modules and .venv if they exist
       - /app/node_modules
       - /app/.venv
+      # Create volume for uploaded files
+      - app_uploads:/app/web_app/pdf_processing/pdfs
+      - app_extracted:/app/web_app/pdf_processing/extracted_text
     depends_on:
       db:
         condition: service_healthy
-    # Use host networking to access external services
-    network_mode: bridge
+    healthcheck:
+      test: ["CMD", "./docker/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
     # Enable TTY for interactive debugging
     tty: true
     stdin_open: true
+    networks:
+      - family-wiki-network
 
 volumes:
   postgres_data:
+    driver: local
+  app_uploads:
+    driver: local
+  app_extracted:
+    driver: local
+
+networks:
+  family-wiki-network:
+    driver: bridge

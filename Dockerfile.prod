@@ -1,0 +1,68 @@
+FROM python:3.12-slim as builder
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Production stage
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+
+# Create non-root user
+RUN groupadd -r familywiki && useradd -r -g familywiki familywiki
+
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-client \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python dependencies from builder stage
+COPY --from=builder /root/.local /home/familywiki/.local
+
+# Set work directory
+WORKDIR /app
+
+# Create directory structure and set permissions
+RUN mkdir -p web_app/pdf_processing/pdfs \
+    && mkdir -p web_app/pdf_processing/extracted_text \
+    && mkdir -p logs \
+    && mkdir -p templates \
+    && mkdir -p web_app/static \
+    && chown -R familywiki:familywiki /app
+
+# Copy Docker scripts first (as root)
+COPY docker/ ./docker/
+RUN chmod +x docker/*.sh
+
+# Copy application files
+COPY --chown=familywiki:familywiki . .
+
+# Switch to non-root user
+USER familywiki
+
+# Update PATH to include user-installed packages
+ENV PATH=/home/familywiki/.local/bin:$PATH
+
+# Expose port
+EXPOSE 5000
+
+# Use the proper entrypoint script
+CMD ["./docker/entrypoint.prod.sh"]
