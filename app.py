@@ -9,12 +9,12 @@ from pathlib import Path
 from flask import Flask
 
 from web_app.blueprints.api_database import api_database
-from web_app.blueprints.api_prompts import api_prompts
 from web_app.blueprints.api_rag import api_rag
 from web_app.blueprints.api_system import api_system
 from web_app.blueprints.entities import entities
 from web_app.blueprints.extraction import extraction
 from web_app.blueprints.main import main
+from web_app.blueprints.prompts import prompts_bp
 from web_app.blueprints.rag import rag
 from web_app.commands import register_commands
 from web_app.database import init_app as init_database
@@ -58,8 +58,8 @@ def create_app(config_class=Config):
 
     # Register blueprints
     app.register_blueprint(main)
+    app.register_blueprint(prompts_bp)
     app.register_blueprint(api_system)
-    app.register_blueprint(api_prompts)
     app.register_blueprint(api_database)
     app.register_blueprint(api_rag)
     app.register_blueprint(entities)

@@ -15,6 +15,19 @@ RUN apt-get update \
         postgresql-client \
         build-essential \
         libpq-dev \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libfontconfig1 \
+        libice6 \
+        tesseract-ocr \
+        tesseract-ocr-nld \
+        libtesseract-dev \
+        poppler-utils \
+        libpoppler-dev \
+        libpoppler-cpp-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

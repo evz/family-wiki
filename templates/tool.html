@@ -204,7 +204,7 @@ function pollTaskStatus(btn, originalText) {
     if (!currentTaskId) return;
     
     pollInterval = setInterval(() => {
-        fetch(`/api/task/${currentTaskId}`)
+        fetch(`/api/extraction/status/${currentTaskId}`)
             .then(response => response.json())
             .then(data => {
                 updateProgress(data);

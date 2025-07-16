@@ -7,7 +7,8 @@ import click
 from web_app.pdf_processing.genealogy_model_benchmark import GenealogyModelBenchmark
 from web_app.pdf_processing.ocr_processor import PDFOCRProcessor
 from web_app.research_question_generator import ResearchQuestionGenerator
-from web_app.services.extraction_service import extraction_service
+from web_app.tasks.extraction_tasks import extract_genealogy_data
+from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.services.gedcom_service import gedcom_service
 from web_app.shared.service_utils import execute_with_progress
 
@@ -47,55 +48,61 @@ def register_commands(app):
         """Extract genealogical data using AI language models with family-focused approach."""
         click.echo("🤖 Starting LLM extraction...")
 
-        def progress_callback(data):
-            if verbose:
-                status = data.get('status', 'unknown')
-                if status == 'running':
-                    current = data.get('current_chunk', 0)
-                    total = data.get('total_chunks', 0)
-                    if total > 0:
-                        click.echo(f"Processing chunk {current}/{total}")
-                else:
-                    click.echo(f"Status: {status}")
-
-        task_id = extraction_service.start_extraction(
-            text_file=text_file,
-            progress_callback=progress_callback if verbose else None
-        )
+        # Start Celery task
+        task = extract_genealogy_data.delay(text_file)
+        task_id = task.id
 
         # For CLI, we wait for completion
         click.echo(f"Task ID: {task_id}")
         click.echo("Waiting for extraction to complete...")
 
-        # Poll for completion (simplified for CLI)
+        # Poll for completion 
         import time
         while True:
-            status = extraction_service.get_task_status(task_id)
-            if not status:
+            task_result = extract_genealogy_data.AsyncResult(task_id)
+            
+            if task_result.state == 'PENDING':
                 click.echo("❌ Task not found")
                 exit(1)
-
-            if status['status'] == 'completed':
+            elif task_result.state == 'RUNNING':
+                if verbose and task_result.info:
+                    meta = task_result.info
+                    status = meta.get('status', 'unknown')
+                    if status == 'processing':
+                        current = meta.get('current_chunk', 0)
+                        total = meta.get('total_chunks', 0)
+                        progress = meta.get('progress', 0)
+                        if total > 0:
+                            click.echo(f"Processing chunk {current}/{total} ({progress}%)")
+                    else:
+                        click.echo(f"Status: {status}")
+            elif task_result.state == 'SUCCESS':
+                result = task_result.result
                 click.echo("✅ Extraction completed successfully!")
-                if status.get('summary'):
-                    summary = status['summary']
+                if result.get('summary'):
+                    summary = result['summary']
                     click.echo("📊 Summary:")
                     click.echo(f"  - Families: {summary.get('total_families', 0)}")
                     click.echo(f"  - People: {summary.get('total_people', 0)}")
                     click.echo(f"  - Isolated individuals: {summary.get('total_isolated_individuals', 0)}")
 
                 # Show database statistics
-                db_stats = extraction_service.get_database_stats()
+                repository = GenealogyDataRepository()
+                db_stats = repository.get_database_stats()
                 if db_stats:
                     click.echo("🗄️ Database Statistics:")
-                    click.echo(f"  - Persons: {db_stats.get('persons', 0)}")
-                    click.echo(f"  - Families: {db_stats.get('families', 0)}")
-                    click.echo(f"  - Places: {db_stats.get('places', 0)}")
-                    click.echo(f"  - Total entities: {db_stats.get('total_entities', 0)}")
+                    click.echo(f"  - Persons: {db_stats.get('total_people', 0)}")
+                    click.echo(f"  - Families: {db_stats.get('total_families', 0)}")
+                    click.echo(f"  - Places: {db_stats.get('total_places', 0)}")
+                    click.echo(f"  - Events: {db_stats.get('total_events', 0)}")
+                    click.echo(f"  - Marriages: {db_stats.get('total_marriages', 0)}")
                 break
-            elif status['status'] == 'failed':
-                click.echo(f"❌ Extraction failed: {status.get('error', 'Unknown error')}")
+            elif task_result.state == 'FAILURE':
+                error = str(task_result.info) if task_result.info else 'Unknown error'
+                click.echo(f"❌ Extraction failed: {error}")
                 exit(1)
+            else:
+                click.echo(f"Task state: {task_result.state}")
 
             time.sleep(2)
 

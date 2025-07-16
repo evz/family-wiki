@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Prompts Management - Family Wiki Tools{% endblock %}
+
+{% block content %}
+<div class="prompts-management">
+    <div class="page-header">
+        <h2>LLM Prompts Management</h2>
+        <p>Manage and customize the AI prompts used for genealogy data extraction.</p>
+    </div>
+
+    <div class="prompts-actions">
+        <a href="{{ url_for('prompts.create_prompt') }}" class="btn btn-primary">Create New Prompt</a>
+    </div>
+
+    <!-- Prompts List -->
+    <div class="prompts-container">
+        {% if prompts %}
+            {% for prompt in prompts %}
+            <div class="prompt-card {% if prompt.id == active_prompt_id %}active{% endif %}">
+                <div class="prompt-header">
+                    <div class="prompt-title">
+                        <h3>{{ prompt.name }}</h3>
+                        <span class="prompt-status {% if prompt.id == active_prompt_id %}active{% else %}inactive{% endif %}">
+                            {% if prompt.id == active_prompt_id %}Active{% else %}Inactive{% endif %}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="prompt-meta">
+                    Created: {{ prompt.created_at.strftime('%Y-%m-%d') }} | 
+                    Updated: {{ prompt.updated_at.strftime('%Y-%m-%d') }}
+                </div>
+                
+                {% if prompt.description %}
+                <div class="prompt-description">
+                    {{ prompt.description }}
+                </div>
+                {% endif %}
+                
+                <div class="prompt-text-preview">
+                    {{ prompt.prompt_text[:200] }}{% if prompt.prompt_text|length > 200 %}...{% endif %}
+                </div>
+                
+                <div class="prompt-actions">
+                    {% if prompt.id != active_prompt_id %}
+                    <form method="POST" action="{{ url_for('prompts.activate_prompt', prompt_id=prompt.id) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-primary">Activate</button>
+                    </form>
+                    {% endif %}
+                    
+                    <a href="{{ url_for('prompts.edit_prompt', prompt_id=prompt.id) }}" class="btn btn-secondary">Edit</a>
+                    
+                    <a href="{{ url_for('prompts.delete_prompt', prompt_id=prompt.id) }}" class="btn btn-danger">Delete</a>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="error-message">
+                No prompts found. <a href="{{ url_for('prompts.create_prompt') }}">Create your first prompt</a> to get started.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

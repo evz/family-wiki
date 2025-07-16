@@ -23,6 +23,19 @@ services:
     networks:
       - family-wiki-network
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - family-wiki-network
+
   web:
     build: .
     ports:
@@ -36,6 +49,10 @@ services:
       # Database configuration
       DATABASE_URL: postgresql://family_wiki_user:family_wiki_password@db:5432/family_wiki
       
+      # Celery configuration
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      
       # Ollama configuration - external machine
       OLLAMA_HOST: ${OLLAMA_HOST:-192.168.1.234}  # Can be overridden via .env
       OLLAMA_PORT: ${OLLAMA_PORT:-11434}
@@ -44,6 +61,12 @@ services:
       # Additional configuration
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       WTF_CSRF_ENABLED: ${WTF_CSRF_ENABLED:-True}
+    extra_hosts:
+      # Map local network hostnames to host IP
+      # This allows Docker containers to resolve hostnames that work on your local network
+      - "${OLLAMA_HOST}:host-gateway"
+      # You can add more hostname mappings here if needed:
+      # - "your-hostname:host-gateway"
     volumes:
       # Bind mount for development - changes reflect immediately
       - .:/app
@@ -56,6 +79,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "./docker/healthcheck.sh"]
       interval: 30s
@@ -66,6 +91,38 @@ services:
     # Enable TTY for interactive debugging
     tty: true
     stdin_open: true
+    networks:
+      - family-wiki-network
+
+  celery-worker:
+    build: .
+    command: celery -A web_app.tasks.celery_app worker --loglevel=info
+    environment:
+      # Database configuration
+      DATABASE_URL: postgresql://family_wiki_user:family_wiki_password@db:5432/family_wiki
+      
+      # Celery configuration
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      
+      # Ollama configuration - external machine
+      OLLAMA_HOST: ${OLLAMA_HOST:-192.168.1.234}
+      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-aya:35b-23}
+    extra_hosts:
+      - "${OLLAMA_HOST}:host-gateway"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.venv
+      - app_uploads:/app/web_app/pdf_processing/pdfs
+      - app_extracted:/app/web_app/pdf_processing/extracted_text
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - family-wiki-network
 

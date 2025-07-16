@@ -263,26 +263,5 @@ class ExtractionService:
         self.logger.info("Cleared existing extraction data")
 
 
-
-
-    def get_database_stats(self) -> dict:
-        """Get current database statistics"""
-        try:
-            repository = GenealogyDataRepository()
-            stats = repository.get_database_stats()
-
-            # Convert to match expected format and add total
-            return {
-                'persons': stats['total_people'],
-                'families': stats['total_families'],
-                'places': stats['total_places'],
-                'events': stats['total_events'],
-                'marriages': stats['total_marriages'],
-                'total_entities': sum(stats.values())
-            }
-        except Exception as e:
-            self.logger.error(f"Failed to get database stats: {e}")
-            return {}
-
 # Global service instance
 extraction_service = ExtractionService()

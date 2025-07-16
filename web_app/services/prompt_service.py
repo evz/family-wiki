@@ -24,6 +24,15 @@ class PromptService:
         """Get all prompts ordered by creation date"""
         return ExtractionPrompt.query.order_by(ExtractionPrompt.created_at.desc()).all()
 
+    def get_prompt_by_id(self, prompt_id: str) -> ExtractionPrompt | None:
+        """Get a prompt by its ID"""
+        try:
+            uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
+            return ExtractionPrompt.query.get(uuid_obj)
+        except ValueError:
+            logger.error(f"Invalid UUID format: {prompt_id}")
+            return None
+
     def create_prompt(self, name: str, prompt_text: str, description: str = "") -> ExtractionPrompt:
         """Create a new extraction prompt"""
         prompt = ExtractionPrompt(

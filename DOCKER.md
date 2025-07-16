@@ -110,8 +110,20 @@ The application expects an external Ollama server. Make sure:
 
 1. Ollama is running on your network
 2. The required model is installed: `ollama pull aya:35b-23`
-3. The OLLAMA_HOST points to the correct IP address
+3. The OLLAMA_HOST points to the correct hostname or IP address
 4. Firewall allows access to port 11434
+
+**Network Hostname Resolution:**
+
+If you're using a hostname for your Ollama server (like `the-area` instead of an IP address), the docker-compose files are configured to automatically map your `OLLAMA_HOST` to the Docker host using `host-gateway`. This allows containers to resolve local network hostnames that work on your host machine.
+
+The configuration uses:
+```yaml
+extra_hosts:
+  - "${OLLAMA_HOST}:host-gateway"
+```
+
+This means whatever hostname you set in your `.env` file for `OLLAMA_HOST` will be automatically resolvable from within the Docker containers.
 
 ## Usage
 
@@ -235,13 +247,24 @@ docker compose -f docker-compose.prod.yml up -d
    # Update OLLAMA_HOST in .env if needed
    ```
 
-3. **Permission Issues**
+3. **OpenCV/Image Processing Library Issues**
+   ```bash
+   # Error: libGL.so.1: cannot open shared object file
+   # This is fixed in the Dockerfiles with the required system libraries:
+   # libgl1-mesa-glx, libglib2.0-0, libsm6, libxext6, libxrender1, 
+   # libfontconfig1, libice6, tesseract-ocr, libtesseract-dev, etc.
+   
+   # If you still get OpenCV errors, rebuild the images:
+   docker compose build --no-cache
+   ```
+
+4. **Permission Issues**
    ```bash
    # Fix volume permissions
    sudo chown -R 1000:1000 web_app/pdf_processing/
    ```
 
-4. **Port Conflicts**
+5. **Port Conflicts**
    ```bash
    # Change ports in docker-compose.yml if 5000 or 5432 are in use
    ports:

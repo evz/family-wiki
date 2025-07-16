@@ -4,7 +4,7 @@ Database management API blueprint
 
 from flask import Blueprint, jsonify
 
-from web_app.services.extraction_service import extraction_service
+from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -17,7 +17,8 @@ api_database = Blueprint('api_database', __name__, url_prefix='/api/database')
 def get_database_stats():
     """Get database statistics"""
     try:
-        stats = extraction_service.get_database_stats()
+        repository = GenealogyDataRepository()
+        stats = repository.get_database_stats()
         return jsonify({
             'success': True,
             'stats': stats

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Prompt' if prompt else 'Create New Prompt' }} - Family Wiki Tools{% endblock %}
+
+{% block content %}
+<div class="prompt-form-section">
+    <div class="page-header">
+        <h2>{{ 'Edit Prompt' if prompt else 'Create New Prompt' }}</h2>
+        <p>
+            <a href="{{ url_for('prompts.list_prompts') }}" class="btn btn-secondary">← Back to Prompts</a>
+        </p>
+    </div>
+    
+    <form method="POST" action="{{ url_for('prompts.save_prompt') }}">
+        {% if prompt %}
+        <input type="hidden" name="prompt_id" value="{{ prompt.id }}">
+        {% endif %}
+        
+        <div class="form-group">
+            <label for="prompt-name">Name:</label>
+            <input type="text" id="prompt-name" name="name" required maxlength="200" 
+                   value="{{ prompt.name if prompt else '' }}"
+                   placeholder="Enter prompt name">
+        </div>
+        
+        <div class="form-group">
+            <label for="prompt-description">Description:</label>
+            <textarea id="prompt-description" name="description" rows="3" 
+                      placeholder="Optional description of what this prompt does">{{ prompt.description if prompt else '' }}</textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="prompt-text">Prompt Text:</label>
+            <textarea id="prompt-text" name="prompt_text" rows="15" required 
+                      placeholder="Enter the complete prompt text for the LLM...">{{ prompt.prompt_text if prompt else '' }}</textarea>
+            <small class="form-help">This is the text that will be sent to the AI model for extraction.</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{ 'Update Prompt' if prompt else 'Create Prompt' }}</button>
+            <a href="{{ url_for('prompts.list_prompts') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

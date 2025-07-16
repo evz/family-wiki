@@ -47,6 +47,12 @@ services:
       # Security configuration
       SECRET_KEY: ${SECRET_KEY}
       WTF_CSRF_ENABLED: ${WTF_CSRF_ENABLED:-True}
+    extra_hosts:
+      # Map local network hostnames to host IP
+      # This allows Docker containers to resolve hostnames that work on your local network
+      - "${OLLAMA_HOST}:host-gateway"
+      # You can add more hostname mappings here if needed:
+      # - "your-hostname:host-gateway"
     volumes:
       # Persistent storage for uploads and extracted content
       - app_uploads:/app/web_app/pdf_processing/pdfs
