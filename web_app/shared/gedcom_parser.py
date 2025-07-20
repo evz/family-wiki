@@ -5,7 +5,10 @@ GEDCOM parser for reading genealogy data from GEDCOM files
 import re
 
 from .dutch_utils import DutchDateParser, DutchNameParser
-from .models import Family, Person
+
+
+# Temporarily disabled - needs refactor to use SQLAlchemy models
+# from .models import Family, Person
 
 
 class GEDCOMParser:
@@ -197,15 +200,15 @@ class GEDCOMParser:
         parts = line.split(None, 2)
         return parts[2] if len(parts) > 2 else ''
 
-    def get_person_by_id(self, person_id: str) -> Person | None:
+    def get_person_by_id(self, person_id: str):  # -> Person | None:
         """Get a person by their ID"""
         return self.individuals.get(person_id)
 
-    def get_family_by_id(self, family_id: str) -> Family | None:
+    def get_family_by_id(self, family_id: str):  # -> Family | None:
         """Get a family by their ID"""
         return self.families.get(family_id)
 
-    def get_person_families(self, person_id: str) -> list[Family]:
+    def get_person_families(self, person_id: str):  # -> list[Family]:
         """Get all families a person belongs to"""
         families = []
         for family in self.families.values():

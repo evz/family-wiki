@@ -5,21 +5,21 @@ OCR processor for family book PDFs with rotation detection and Dutch/English sup
 
 import logging
 import os
-import sys
 import tempfile
+import time
+from io import BytesIO
 from pathlib import Path
 
+import cv2
+import fitz  # PyMuPDF
+import numpy as np
+import pytesseract
+from langdetect import LangDetectException, detect
+from PIL import Image, ImageOps
 
-try:
-    import cv2
-    import fitz  # PyMuPDF
-    import numpy as np
-    import pytesseract
-    from PIL import Image, ImageOps
-except ImportError as e:
-    print(f"Missing required package: {e}")
-    print("Install with: pip install PyMuPDF pytesseract pillow opencv-python")
-    sys.exit(1)
+from web_app.database import db
+from web_app.database.models import OcrPage
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -186,4 +186,183 @@ class PDFOCRProcessor:
                         consolidated.write("\n" + "="*50 + "\n\n")
 
         logger.info(f"Consolidated text saved to {consolidated_path}")
+
+    def process_single_page_pdf_to_database(self, pdf_path: Path, batch_id: str, page_number: int = None) -> dict:
+        """Process a single-page PDF and save to database"""
+        logger.info(f"Processing single-page PDF to database: {pdf_path.name}")
+
+        page_number = self._extract_page_number(pdf_path, page_number)
+        start_time = time.time()
+
+        # Convert PDF to image
+        image_result = self._pdf_to_image(pdf_path, batch_id, page_number)
+        if not image_result['success']:
+            return image_result
+
+        # Extract text from image
+        text_result = self._extract_text_from_image(image_result['image'], batch_id, pdf_path.name, page_number)
+        if not text_result['success']:
+            return text_result
+
+        # Save to database
+        processing_time = int((time.time() - start_time) * 1000)
+        return self._save_ocr_result(
+            batch_id, pdf_path, page_number,
+            text_result['text'], text_result['confidence'], text_result['language'],
+            processing_time
+        )
+
+    def _extract_page_number(self, pdf_path: Path, page_number: int = None) -> int:
+        """Extract page number from filename if not provided"""
+        if page_number is not None:
+            return page_number
+
+        try:
+            return int(pdf_path.stem)
+        except ValueError:
+            logger.warning(f"Could not extract page number from {pdf_path.name}, defaulting to 1")
+            return 1
+
+    def _pdf_to_image(self, pdf_path: Path, batch_id: str, page_number: int) -> dict:
+        """Convert single-page PDF to PIL Image"""
+        try:
+            pdf_document = fitz.open(str(pdf_path))
+        except (fitz.FileNotFoundError, fitz.FileDataError) as e:
+            return self._save_ocr_error(batch_id, pdf_path.name, page_number, f"Invalid PDF file: {e}")
+
+        if len(pdf_document) != 1:
+            pdf_document.close()
+            return self._save_ocr_error(batch_id, pdf_path.name, page_number,
+                                      f"PDF must contain exactly 1 page, found {len(pdf_document)} pages")
+
+        try:
+            page = pdf_document.load_page(0)
+            mat = fitz.Matrix(2, 2)  # 2x scale for better quality
+            pix = page.get_pixmap(matrix=mat)
+            img_data = pix.tobytes("ppm")
+            image = Image.open(BytesIO(img_data))
+
+            return {'success': True, 'image': image}
+
+        except (RuntimeError, OSError) as e:
+            return self._save_ocr_error(batch_id, pdf_path.name, page_number, f"Image conversion failed: {e}")
+        finally:
+            pdf_document.close()
+
+    def _extract_text_from_image(self, image: Image, batch_id: str, filename: str, page_number: int) -> dict:
+        """Extract text and metadata from PIL Image"""
+        try:
+            ocr_data = pytesseract.image_to_data(image, lang='nld+eng', output_type=pytesseract.Output.DICT)
+
+            text_parts = []
+            confidences = []
+
+            for i, word in enumerate(ocr_data['text']):
+                if word.strip():
+                    text_parts.append(word)
+                    confidences.append(int(ocr_data['conf'][i]))
+
+            text = ' '.join(text_parts)
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
+            # Detect language
+            detected_lang = self._detect_language(text)
+
+            return {
+                'success': True,
+                'text': text,
+                'confidence': avg_confidence / 100.0,  # Convert to 0-1 scale
+                'language': detected_lang
+            }
+
+        except pytesseract.TesseractError as e:
+            return self._save_ocr_error(batch_id, filename, page_number, f"OCR processing failed: {e}")
+
+    def _detect_language(self, text: str) -> str:
+        """Detect language of extracted text"""
+        if not text or len(text.strip()) < 10:
+            return 'unknown'
+
+        try:
+            return detect(text)
+        except LangDetectException:
+            return 'unknown'  # Cannot determine language
+
+    def _save_ocr_result(self, batch_id: str, pdf_path: Path, page_number: int,
+                        text: str, confidence: float, language: str, processing_time: int) -> dict:
+        """Save successful OCR result to database"""
+        try:
+            existing = OcrPage.query.filter_by(batch_id=batch_id, filename=pdf_path.name).first()
+
+            if existing:
+                existing.extracted_text = text
+                existing.confidence_score = confidence
+                existing.language = language
+                existing.processing_time_ms = processing_time
+                existing.status = 'completed'
+                existing.error_message = None
+            else:
+                ocr_page = OcrPage(
+                    batch_id=batch_id,
+                    filename=pdf_path.name,
+                    page_number=page_number,
+                    file_path=str(pdf_path),
+                    extracted_text=text,
+                    confidence_score=confidence,
+                    ocr_engine='tesseract',
+                    language=language,
+                    processing_time_ms=processing_time,
+                    status='completed'
+                )
+                db.session.add(ocr_page)
+
+            db.session.commit()
+
+            return {
+                'success': True,
+                'filename': pdf_path.name,
+                'page_number': page_number,
+                'batch_id': batch_id,
+                'text_length': len(text),
+                'confidence_score': confidence,
+                'language': language,
+                'processing_time_ms': processing_time
+            }
+
+        except Exception as e:
+            db.session.rollback()
+            return self._save_ocr_error(batch_id, pdf_path.name, page_number, f"Database error: {e}")
+
+    def _save_ocr_error(self, batch_id: str, filename: str, page_number: int, error_message: str) -> dict:
+        """Save OCR error to database"""
+        logger.error(f"OCR error for {filename}: {error_message}")
+
+        try:
+            existing = OcrPage.query.filter_by(batch_id=batch_id, filename=filename).first()
+
+            if existing:
+                existing.status = 'failed'
+                existing.error_message = error_message
+            else:
+                ocr_page = OcrPage(
+                    batch_id=batch_id,
+                    filename=filename,
+                    page_number=page_number,
+                    status='failed',
+                    error_message=error_message
+                )
+                db.session.add(ocr_page)
+
+            db.session.commit()
+        except Exception as db_error:
+            logger.error(f"Failed to save error to database: {db_error}")
+            db.session.rollback()
+
+        return {
+            'success': False,
+            'filename': filename,
+            'page_number': page_number,
+            'batch_id': batch_id,
+            'error': error_message
+        }
 

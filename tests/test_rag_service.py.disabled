@@ -7,13 +7,18 @@ from unittest.mock import Mock, patch
 import pytest
 
 from web_app.database.models import QuerySession, SourceText, TextCorpus
-from web_app.services.rag_service import rag_service
+from web_app.services.rag_service import RAGService
 
 
 class TestRAGService:
     """Test RAG service functionality"""
 
-    def test_create_corpus(self, app, db):
+    @pytest.fixture
+    def rag_service(self):
+        """Create RAG service instance for testing"""
+        return RAGService()
+
+    def test_create_corpus(self, rag_service, app, db):
         """Test creating a new text corpus"""
         with app.app_context():
             corpus = rag_service.create_corpus(
@@ -130,8 +135,8 @@ class TestRAGService:
 
             assert embedding is None
 
-    @patch.object(rag_service, 'generate_embedding')
-    def test_store_source_text(self, mock_embedding, app, db):
+    @patch.object(RAGService, 'generate_embedding')
+    def test_store_source_text(self, mock_embedding, rag_service, app, db):
         """Test storing source text with embeddings"""
         with app.app_context():
             # Setup

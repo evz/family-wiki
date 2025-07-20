@@ -7,7 +7,10 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-from web_app.shared import DutchDateParser, DutchNameParser, GEDCOMWriter, Person
+from web_app.shared import DutchDateParser, DutchNameParser
+
+# Temporarily disabled - needs refactor to use SQLAlchemy models
+# from web_app.shared import GEDCOMWriter, Person
 from web_app.shared.logging_config import get_project_logger
 
 

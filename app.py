@@ -12,6 +12,7 @@ from web_app.blueprints.entities import entities
 from web_app.blueprints.main import main
 from web_app.blueprints.prompts import prompts_bp
 from web_app.blueprints.rag import rag
+
 # Temporarily disabled for Phase 2 testing - has GEDCOM dependencies
 # from web_app.blueprints.tools import tools_bp
 from web_app.database import init_app as init_database

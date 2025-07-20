@@ -79,19 +79,27 @@ def app():
     """Create Flask app for testing"""
     class TestConfig:
         def __init__(self):
-            self.TESTING = True
-            self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-            self.SQLALCHEMY_TRACK_MODIFICATIONS = False
-            self.SECRET_KEY = 'test-secret-key'
-            self.OLLAMA_HOST = 'localhost'
-            self.OLLAMA_PORT = 11434
-            self.OLLAMA_MODEL = 'test-model'
+            # App configuration
+            self.secret_key = 'test-secret-key'
+
+            # Database configuration
+            self.sqlalchemy_database_uri = 'sqlite:///:memory:'
+            self.sqlalchemy_track_modifications = False
+
+            # Celery configuration
+            self.celery_broker_url = 'redis://localhost:6379/0'
+            self.celery_result_backend = 'redis://localhost:6379/1'
+
+            # Ollama configuration
+            self.ollama_host = 'localhost'
+            self.ollama_port = 11434
+            self.ollama_model = 'test-model'
 
         @property
         def ollama_base_url(self):
-            return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"
+            return f"http://{self.ollama_host}:{self.ollama_port}"
 
-    app = create_app(TestConfig)
+    app = create_app(TestConfig())
 
     with app.app_context():
         yield app

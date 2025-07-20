@@ -181,6 +181,49 @@ class ExtractionPrompt(db.Model):
         return f'<ExtractionPrompt {self.name}>'
 
 
+class OcrPage(db.Model):
+    """Model for storing OCR results per single-page PDF (e.g., 001.pdf, 002.pdf)"""
+    __tablename__ = 'ocr_pages'
+
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Batch grouping - multiple single-page PDFs uploaded together
+    batch_id = db.Column(UUID(as_uuid=True), nullable=False)
+
+    # File identification
+    filename = db.Column(db.String(255), nullable=False)  # e.g., "001.pdf"
+    page_number = db.Column(db.Integer, nullable=False)   # extracted from filename: 001.pdf → 1
+    file_path = db.Column(db.String(500))  # Original PDF file path
+
+    # OCR results
+    extracted_text = db.Column(db.Text)
+    confidence_score = db.Column(db.Float)  # Overall confidence from OCR
+
+    # Processing metadata
+    ocr_engine = db.Column(db.String(50), default='tesseract')
+    language = db.Column(db.String(10), default='nld')  # Dutch
+    processing_time_ms = db.Column(db.Integer)
+
+    # Status and error handling
+    status = db.Column(db.String(50), default='pending')  # pending, processing, completed, failed
+    error_message = db.Column(db.Text)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Ensure unique pages per batch
+    __table_args__ = (
+        db.UniqueConstraint('batch_id', 'filename', name='unique_batch_file'),
+        db.Index('idx_ocr_batch', 'batch_id'),
+        db.Index('idx_ocr_filename', 'filename'),
+        db.Index('idx_ocr_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<OcrPage {self.filename}:page_{self.page_number}>'
+
+
 # Association table for parent-child relationships
 parent_child = db.Table('parent_child',
     db.Column('parent_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True),
