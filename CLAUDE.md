@@ -111,8 +111,8 @@ Docker/SSL issues block production deployment and development workflow, so they 
 **Phase 0: Docker & Production Setup** *(Current)*
 1. ✅ **Documentation cleanup** - Update CLAUDE.md, remove obsolete sections
 2. ✅ **Fix Celery task discovery** - Added task autodiscovery to celery_app.py
-3. ⏳ **Add automated SSL with Let's Encrypt** - Add certbot container for production
-4. ⏳ **Make nginx required in production** - Remove manual SSL, integrate certbot
+3. ✅ **Add automated SSL with Let's Encrypt** - Added nginx-certbot container
+4. ✅ **Make nginx required in production** - Removed manual SSL, nginx always included
 5. ⏳ **Add production Celery worker** - Missing from prod compose file
 6. ⏳ **Offline-capable `make dev`** - Support local ollama, work without internet if images cached
 
@@ -149,17 +149,17 @@ Docker/SSL issues block production deployment and development workflow, so they 
 
 ### How to Resume Work
 
-**Current Task**: Add automated SSL with Let's Encrypt (Phase 0, Task 3)
+**Current Task**: Add production Celery worker (Phase 0, Task 5)
 
 **To get started:**
-1. Add certbot container to production docker-compose 
-2. Configure nginx to use certbot-generated certificates
-3. Add domain configuration and certificate renewal
-4. Test SSL setup works automatically
+1. Verify celery worker is properly configured in prod compose
+2. Test that celery worker starts correctly with Redis
+3. Verify background tasks work in production environment
+4. Document any production-specific celery configuration
 
 **Quality Gates**: Each task must pass `ruff check .` and `pytest` before completion.
 
-**Next Task**: Make nginx required in production, remove manual SSL setup
+**Next Task**: Make `make dev` work offline with cached images
 
 ## Development
 
