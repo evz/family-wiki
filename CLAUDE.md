@@ -14,10 +14,10 @@ Family Wiki Tools is a unified Flask application for AI-powered genealogy digiti
 - **Model Benchmarking**: Test multiple LLM models for optimal extraction performance
 
 **Architecture:**
-- **Flask CLI Commands**: All tools available via `flask <command>` (e.g., `flask extract`)
 - **Web Interface**: Browser-based access to all tools with progress tracking
-- **Shared Services**: Common business logic used by both CLI and web interface
+- **Shared Services**: Business logic services used by web interface
 - **Blueprint Organization**: Clean separation of web routes and API endpoints
+- **Background Tasks**: Celery tasks for long-running operations
 
 ## Project Structure *(Cleanup in Progress)*
 
@@ -62,12 +62,12 @@ family-wiki/
 ├── tests/                        # Comprehensive test suite
 └── requirements.txt             # Dependencies
 
-Notes: Some obsolete files still present, removal in progress per cleanup plan.
+Notes: Phase 1 cleanup complete - obsolete API blueprints, CLI commands, and dataclass models removed.
 ```
 
-## Usage *(Under Revision)*
+## Usage
 
-**Web Interface (Primary):**
+**Web Interface:**
 ```bash
 # Setup
 source .venv/bin/activate
@@ -89,8 +89,6 @@ docker-compose up      # Start PostgreSQL + web app
 # Visit http://localhost:5000
 ```
 
-*Note: CLI commands being refactored as part of cleanup plan.*
-
 ## Key Technical Notes
 
 - **Family-Focused Extraction**: LLM extracts family units with parent-child relationships, not just isolated individuals
@@ -102,9 +100,9 @@ docker-compose up      # Start PostgreSQL + web app
 
 ## Current Phase: Cleanup & Completion (January 2025)
 
-**STATUS: Beginning Phase 0 - Docker & Production Setup**
+**STATUS: Phase 1 Complete - Starting Phase 2**
 
-Docker/SSL issues block production deployment and development workflow, so they take priority over cleanup work. The project has good Docker infrastructure but needs specific fixes.
+Phase 0 and Phase 1 are complete. Phase 2 (Fix Configuration) is starting.
 
 ### Cleanup Plan Overview
 
@@ -116,11 +114,11 @@ Docker/SSL issues block production deployment and development workflow, so they 
 5. ✅ **Add production Celery worker** - Added celery worker and Redis to prod compose
 6. ✅ **Offline-capable `make dev`** - Smart build + .env support for local ollama
 
-**Phase 1: Remove Dead Code**
-7. Remove obsolete API blueprints - Delete `api_database.py`, `api_system.py`, `extraction.py` 
-8. Remove dataclass models - Delete old dataclass models and tests
-9. Remove OpenAI integration - Clean out OpenAI code from `llm_genealogy_extractor.py`
-10. Remove CLI commands - Delete `commands.py` and related test files
+**Phase 1: Remove Dead Code** ✅ **COMPLETED**
+7. ✅ **Remove obsolete API blueprints** - Deleted `api_system.py`, `api_rag.py`, `extraction.py` and related tests
+8. ✅ **Remove dataclass models** - Deleted old dataclass models and tests (models.py, test_models.py)
+9. ✅ **Remove OpenAI integration** - Cleaned out OpenAI code from `llm_genealogy_extractor.py`
+10. ✅ **Remove CLI commands** - Deleted `commands.py` and related test files
 
 **Phase 2: Fix Configuration**
 6. Centralize configuration - Remove hardcoded defaults, require env vars
@@ -149,17 +147,17 @@ Docker/SSL issues block production deployment and development workflow, so they 
 
 ### How to Resume Work
 
-**Current Task**: Remove obsolete API blueprints (Phase 1, Task 1)
+**Current Task**: Centralize configuration (Phase 2, Task 1)
 
 **To get started:**
-1. Check which API blueprints exist: `ls web_app/blueprints/`
-2. Identify obsolete blueprints per TODO.md (api_database.py, api_system.py, extraction.py)
-3. Remove imports from app.py, then delete blueprint files
-4. Run tests to verify nothing breaks: `source .venv/bin/activate && pytest`
+1. Check app.py Config class for hardcoded defaults
+2. Update configuration to require environment variables instead of defaults
+3. Check .env.example for missing required variables
+4. Update services to use config instead of hardcoded values
 
 **Quality Gates**: Each task must pass `ruff check .` and `pytest` before completion.
 
-**Next Task**: Remove dataclass models and their tests
+**Next Task**: Fix service instantiation - Remove global instances
 
 ## Development
 
@@ -197,7 +195,7 @@ source .venv/bin/activate
 
 pytest                              # Run all tests
 pytest tests/test_services.py       # Test service layer
-pytest tests/test_flask_app.py      # Test Flask app and CLI
+pytest tests/test_entities_blueprint.py  # Test entity browsing
 pytest -v                          # Verbose output
 
 # Test Coverage (REQUIREMENT: Must maintain >90% coverage)
@@ -223,8 +221,8 @@ ruff check . --fix                  # Auto-fix issues
 
 **Current State (January 2025):**
 - **Database-Driven**: PostgreSQL + pgvector with RAG capabilities
-- **Flask Application**: Unified CLI and web interface 
-- **Service Layer**: Shared business logic between interfaces
+- **Flask Application**: Web interface with background task processing 
+- **Service Layer**: Shared business logic for web and background tasks
 - **Blueprint Organization**: Separated API and web routes
 - **Testing**: Comprehensive test suite with quality gates
 
@@ -249,12 +247,11 @@ ruff check . --fix                  # Auto-fix issues
 - **RAG Components**: `TextCorpus`, `SourceText`, `QuerySession`, `Query`
 - **Management**: `ExtractionPrompt`, `Source`
 
-**Known Issues Requiring Cleanup:**
-Per TODO.md analysis, significant technical debt exists:
-- Halfway-implemented features (research questions, wiki export)
-- Dead code (obsolete API blueprints, OpenAI integration, dataclass models)
-- Configuration issues (hardcoded defaults, global instances)
-- Incomplete database migration (OCR still saves to files)
-- Poor error handling throughout codebase
+**Remaining Technical Debt:**
+Per TODO.md analysis, remaining issues after Phase 1 cleanup:
+- Configuration issues (hardcoded defaults, global instances) - **Phase 2 in progress**
+- Incomplete database migration (OCR still saves to files) - **Phase 3 pending**
+- Poor error handling throughout codebase - **Phase 4 pending**
+- Halfway-implemented features (research questions, wiki export) - **Phase 5 pending**
 
-**Test Coverage**: Current status unclear due to conflicting reports in previous documentation. Needs verification.
+**Progress:** Phase 0 and Phase 1 complete. Dead code removed, Docker/SSL setup complete.
