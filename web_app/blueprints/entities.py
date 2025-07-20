@@ -5,7 +5,7 @@ Entities blueprint for browsing database entities
 from flask import Blueprint, render_template
 
 from web_app.database.models import Event, Family, Marriage, Person, Place
-from web_app.services.extraction_service import extraction_service
+from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -17,7 +17,8 @@ entities = Blueprint('entities', __name__, url_prefix='/entities')
 @entities.route('/')
 def index():
     """Browse all entities in the database"""
-    db_stats = extraction_service.get_database_stats()
+    repository = GenealogyDataRepository()
+    db_stats = repository.get_database_stats()
     return render_template('entities/index.html', db_stats=db_stats)
 
 

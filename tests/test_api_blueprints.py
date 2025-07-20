@@ -611,14 +611,14 @@ class TestRAGAPIBlueprint:
         mock_chunk1.page_number = 1
         mock_chunk1.chunk_number = 1
         mock_chunk1.content = 'Test content 1'
-        
+
         mock_chunk2 = MagicMock()
         mock_chunk2.id = 'chunk-2'
         mock_chunk2.filename = 'test.pdf'
         mock_chunk2.page_number = 1
         mock_chunk2.chunk_number = 2
         mock_chunk2.content = 'Test content 2'
-        
+
         mock_results = [
             (mock_chunk1, 0.9),
             (mock_chunk2, 0.8)

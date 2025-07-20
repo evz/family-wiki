@@ -3,8 +3,11 @@ Utility functions for service layer error handling
 """
 
 from functools import wraps
+
 from flask import flash, redirect, url_for
-from web_app.services.exceptions import ServiceError, ValidationError, NotFoundError, ConflictError
+
+from web_app.services.exceptions import ConflictError, NotFoundError, ServiceError, ValidationError
+
 
 def handle_service_errors(redirect_endpoint='main.index', success_message=None):
     """

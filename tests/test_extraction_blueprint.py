@@ -3,21 +3,19 @@ Tests for extraction blueprint endpoints
 """
 
 import json
-from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
 
 from app import Config, create_app
-from web_app.services.extraction_service import ExtractionTask
 
 
 class ExtractionTestConfig(Config):
     """Test configuration"""
-    def __init__(self):
-        super().__init__()
-        self.TESTING = True
-        self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'cache+memory://'
 
 
 class TestExtractionBlueprint:
@@ -35,15 +33,17 @@ class TestExtractionBlueprint:
         return app.test_client()
 
     @pytest.fixture
-    def mock_extraction_service(self):
-        """Mock extraction service"""
-        with patch('web_app.blueprints.extraction.extraction_service') as mock_service:
-            yield mock_service
+    def mock_extraction_task(self):
+        """Mock extraction task"""
+        with patch('web_app.blueprints.extraction.extract_genealogy_data') as mock_task:
+            yield mock_task
 
-    def test_start_extraction_success(self, client, mock_extraction_service):
+    def test_start_extraction_success(self, client, mock_extraction_task):
         """Test successful extraction start"""
-        # Mock service response
-        mock_extraction_service.start_extraction.return_value = "test-task-123"
+        # Mock task response
+        mock_task_instance = Mock()
+        mock_task_instance.id = "test-task-123"
+        mock_extraction_task.delay.return_value = mock_task_instance
 
         response = client.get('/api/extraction/start')
 
@@ -53,15 +53,14 @@ class TestExtractionBlueprint:
         assert data['status'] == 'started'
         assert 'message' in data
 
-        # Verify service was called correctly
-        mock_extraction_service.start_extraction.assert_called_once_with(
-            text_file=None,
-            progress_callback=None
-        )
+        # Verify task was called correctly
+        mock_extraction_task.delay.assert_called_once_with(None)
 
-    def test_start_extraction_with_text_file(self, client, mock_extraction_service):
+    def test_start_extraction_with_text_file(self, client, mock_extraction_task):
         """Test extraction start with custom text file"""
-        mock_extraction_service.start_extraction.return_value = "test-task-456"
+        mock_task_instance = Mock()
+        mock_task_instance.id = "test-task-456"
+        mock_extraction_task.delay.return_value = mock_task_instance
 
         response = client.get('/api/extraction/start?text_file=custom.txt')
 
@@ -69,15 +68,12 @@ class TestExtractionBlueprint:
         data = json.loads(response.data)
         assert data['task_id'] == "test-task-456"
 
-        # Verify service was called with custom text file
-        mock_extraction_service.start_extraction.assert_called_once_with(
-            text_file='custom.txt',
-            progress_callback=None
-        )
+        # Verify task was called with custom text file
+        mock_extraction_task.delay.assert_called_once_with('custom.txt')
 
-    def test_start_extraction_failure(self, client, mock_extraction_service):
+    def test_start_extraction_failure(self, client, mock_extraction_task):
         """Test extraction start failure"""
-        mock_extraction_service.start_extraction.side_effect = Exception("Service unavailable")
+        mock_extraction_task.delay.side_effect = Exception("Task queue unavailable")
 
         response = client.get('/api/extraction/start')
 

@@ -69,19 +69,21 @@ db-shell:
 
 # Production environment
 prod: prod-build
-	@echo "Starting production environment..."
-	docker compose -f docker-compose.prod.yml up -d
+	@echo "Starting production environment with SSL..."
+	@if [ ! -f .env.prod ]; then echo "Error: .env.prod file required. Copy .env.prod.example and fill in values."; exit 1; fi
+	docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 	@echo "Production services started."
+	@echo "Note: SSL certificate generation may take a few minutes on first startup."
 
 prod-build:
 	@echo "Building production Docker images..."
-	docker compose -f docker-compose.prod.yml build
+	docker compose -f docker-compose.prod.yml --env-file .env.prod build
 
 prod-down:
-	docker compose -f docker-compose.prod.yml down
+	docker compose -f docker-compose.prod.yml --env-file .env.prod down
 
 prod-logs:
-	docker compose -f docker-compose.prod.yml logs -f
+	docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f
 
 # Maintenance
 clean:

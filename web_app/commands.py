@@ -6,11 +6,11 @@ import click
 
 from web_app.pdf_processing.genealogy_model_benchmark import GenealogyModelBenchmark
 from web_app.pdf_processing.ocr_processor import PDFOCRProcessor
-from web_app.research_question_generator import ResearchQuestionGenerator
-from web_app.tasks.extraction_tasks import extract_genealogy_data
 from web_app.repositories.genealogy_repository import GenealogyDataRepository
+from web_app.research_question_generator import ResearchQuestionGenerator
 from web_app.services.gedcom_service import gedcom_service
 from web_app.shared.service_utils import execute_with_progress
+from web_app.tasks.extraction_tasks import extract_genealogy_data
 
 
 def register_commands(app):
@@ -56,11 +56,11 @@ def register_commands(app):
         click.echo(f"Task ID: {task_id}")
         click.echo("Waiting for extraction to complete...")
 
-        # Poll for completion 
+        # Poll for completion
         import time
         while True:
             task_result = extract_genealogy_data.AsyncResult(task_id)
-            
+
             if task_result.state == 'PENDING':
                 click.echo("❌ Task not found")
                 exit(1)

@@ -2,12 +2,12 @@
 Tests for GenealogyDataRepository
 """
 
+
 import pytest
-from unittest.mock import patch
 
 from app import create_app
 from web_app.database import db
-from web_app.database.models import Family, Person, Place, Marriage
+from web_app.database.models import Family, Person, Place
 from web_app.repositories.genealogy_repository import GenealogyDataRepository
 
 
@@ -22,13 +22,13 @@ def app():
         OLLAMA_HOST = 'localhost'
         OLLAMA_PORT = 11434
         OLLAMA_MODEL = 'test-model'
-        
+
         @property
         def ollama_base_url(self):
             return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"
-    
+
     app = create_app(TestConfig)
-    
+
     with app.app_context():
         db.create_all()
         yield app
@@ -48,7 +48,7 @@ class TestGenealogyDataRepository:
     def test_get_database_stats_empty(self, repository):
         """Test getting stats from empty database"""
         stats = repository.get_database_stats()
-        
+
         assert stats['total_people'] == 0
         assert stats['total_families'] == 0
         assert stats['total_marriages'] == 0
@@ -62,12 +62,12 @@ class TestGenealogyDataRepository:
             person = Person(given_names="Jan", surname="Doe")
             family = Family()
             place = Place(name="Amsterdam")
-            
+
             db.session.add_all([person, family, place])
             db.session.commit()
-            
+
             stats = repository.get_database_stats()
-            
+
             assert stats['total_people'] == 1
             assert stats['total_families'] == 1
             assert stats['total_places'] == 1
@@ -77,20 +77,20 @@ class TestGenealogyDataRepository:
         with app.app_context():
             # Add some test data (let IDs auto-generate)
             person = Person(given_names="Jan", surname="Doe")
-            family = Family() 
+            family = Family()
             place = Place(name="Amsterdam")
-            
+
             db.session.add_all([person, family, place])
             db.session.commit()
-            
+
             # Verify data exists
             assert Person.query.count() == 1
             assert Family.query.count() == 1
             assert Place.query.count() == 1
-            
+
             # Clear data
             repository.clear_all_data()
-            
+
             # Verify data is cleared
             assert Person.query.count() == 0
             assert Family.query.count() == 0
@@ -102,9 +102,9 @@ class TestGenealogyDataRepository:
             'given_names': 'Jan Willem',
             'surname': 'Jansen'
         }
-        
+
         given, tussenvoegsel, surname = repository._parse_dutch_name(person_data)
-        
+
         assert given == 'Jan Willem'
         assert tussenvoegsel == ''
         assert surname == 'Jansen'
@@ -114,9 +114,9 @@ class TestGenealogyDataRepository:
         person_data = {
             'name': 'Jan van der Berg'
         }
-        
+
         given, tussenvoegsel, surname = repository._parse_dutch_name(person_data)
-        
+
         assert given == 'Jan'
         assert tussenvoegsel == 'van der'
         assert surname == 'Berg'
@@ -128,9 +128,9 @@ class TestGenealogyDataRepository:
             'tussenvoegsel': 'de',
             'surname': 'Jong'
         }
-        
+
         given, tussenvoegsel, surname = repository._parse_dutch_name(person_data)
-        
+
         assert given == 'Maria'
         assert tussenvoegsel == 'de'
         assert surname == 'Jong'
@@ -140,7 +140,7 @@ class TestGenealogyDataRepository:
         with app.app_context():
             place_cache = {}
             place = repository._get_or_create_place("Amsterdam", place_cache)
-            
+
             assert place is not None
             assert place.name == "Amsterdam"
             assert "Amsterdam" in place_cache
@@ -153,10 +153,10 @@ class TestGenealogyDataRepository:
             existing_place = Place(name="Amsterdam")
             db.session.add(existing_place)
             db.session.commit()
-            
+
             place_cache = {}
             place = repository._get_or_create_place("Amsterdam", place_cache)
-            
+
             assert place is not None
             assert place.id == existing_place.id
             assert "Amsterdam" in place_cache
@@ -165,18 +165,18 @@ class TestGenealogyDataRepository:
         """Test getting place from cache"""
         cached_place = Place(name="Amsterdam")
         place_cache = {"Amsterdam": cached_place}
-        
+
         place = repository._get_or_create_place("Amsterdam", place_cache)
-        
+
         assert place is cached_place
 
     def test_get_or_create_place_empty_name(self, repository):
         """Test handling empty place name"""
         place_cache = {}
         place = repository._get_or_create_place("", place_cache)
-        
+
         assert place is None
-        
+
         place = repository._get_or_create_place(None, place_cache)
         assert place is None
 
@@ -202,10 +202,10 @@ class TestGenealogyDataRepository:
                 'birth_place': 'Amsterdam',
                 'notes': 'Test person'
             }
-            
+
             place_cache = {}
             person = repository._create_person_from_data(person_data, place_cache)
-            
+
             assert person is not None
             assert person.given_names == 'Jan'
             assert person.surname == 'Doe'
@@ -231,17 +231,17 @@ class TestGenealogyDataRepository:
                     'surname': 'Doe'
                 }]
             }]
-            
+
             isolated_individuals = [{
                 'given_names': 'Bob',
                 'surname': 'Jones'
             }]
-            
+
             result = repository.save_extraction_data(families, isolated_individuals)
-            
+
             assert result['families_created'] == 1
             assert result['people_created'] == 1
-            
+
             # Verify data was saved
             assert Family.query.count() == 1
             assert Person.query.count() >= 3  # Father, mother, child + isolated

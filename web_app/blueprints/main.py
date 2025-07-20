@@ -5,8 +5,7 @@ Main blueprint for web interface
 
 from flask import Blueprint, flash, redirect, render_template, url_for
 
-from web_app.services.extraction_service import extraction_service
-from web_app.services.prompt_service import prompt_service
+from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.services.system_service import system_service
 from web_app.shared.logging_config import get_project_logger
 
@@ -22,7 +21,8 @@ def index():
     system_status = system_service.check_system_status()
 
     # Get database statistics
-    db_stats = extraction_service.get_database_stats()
+    repository = GenealogyDataRepository()
+    db_stats = repository.get_database_stats()
 
     return render_template('index.html', system_status=system_status, db_stats=db_stats)
 
@@ -45,13 +45,9 @@ def tool_page(tool):
 
     # Special handling for prompts tool
     if tool == 'prompts':
-        prompts = prompt_service.get_all_prompts()
-        active_prompt = prompt_service.get_active_prompt()
-        return render_template('prompts.html',
-                             prompts=prompts,
-                             active_prompt=active_prompt,
-                             tool_name=valid_tools[tool])
+        return redirect(url_for('prompts.list_prompts'))
 
-    return render_template('tool.html', tool=tool, tool_name=valid_tools[tool])
+    # Redirect other tools to the new unified dashboard
+    return redirect(url_for('tools.dashboard'))
 
 

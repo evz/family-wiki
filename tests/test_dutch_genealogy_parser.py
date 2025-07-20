@@ -2,7 +2,6 @@
 Tests for Dutch genealogy parser
 """
 
-import pytest
 from web_app.shared.dutch_genealogy_parser import DutchGenealogyParser
 
 
@@ -238,9 +237,9 @@ class TestDutchGenealogyParser:
             'confidence_score': 0.9
         }]
         isolated = [{'name': 'Bob', 'confidence_score': 0.8}]
-        
+
         stats = DutchGenealogyParser.calculate_summary_statistics(families, isolated)
-        
+
         assert stats['total_families'] == 1
         assert stats['total_isolated_individuals'] == 1
         assert stats['total_people'] == 5  # 2 parents + 2 children + 1 isolated
@@ -251,7 +250,7 @@ class TestDutchGenealogyParser:
     def test_calculate_summary_statistics_empty_data(self):
         """Test summary statistics with empty data"""
         stats = DutchGenealogyParser.calculate_summary_statistics([], [])
-        
+
         assert stats['total_families'] == 0
         assert stats['total_isolated_individuals'] == 0
         assert stats['total_people'] == 0
@@ -267,9 +266,9 @@ class TestDutchGenealogyParser:
             'generation': '3e generatie'
         }]
         isolated = [{'name': 'Bob', 'generation': 'generatie 5'}]
-        
+
         stats = DutchGenealogyParser.calculate_summary_statistics(families, isolated)
-        
+
         assert stats['generations_count'] == 2  # Generations 3 and 5
 
     def test_calculate_summary_statistics_no_parents(self):
@@ -277,9 +276,9 @@ class TestDutchGenealogyParser:
         families = [{
             'children': [{'name': 'Child1'}]
         }]
-        
+
         stats = DutchGenealogyParser.calculate_summary_statistics(families, [])
-        
+
         assert stats['total_parents'] == 0
         assert stats['total_children'] == 1
         assert stats['total_people'] == 1
@@ -290,9 +289,9 @@ class TestDutchGenealogyParser:
             'parents': {'father': {'name': 'John'}},
             'children': [{'name': 'Child1'}]
         }]
-        
+
         stats = DutchGenealogyParser.calculate_summary_statistics(families, [])
-        
+
         assert stats['total_parents'] == 1
         assert stats['total_children'] == 1
         assert stats['total_people'] == 2
@@ -303,9 +302,9 @@ class TestDutchGenealogyParser:
             'parents': {'mother': {'name': 'Jane'}},
             'children': [{'name': 'Child1'}]
         }]
-        
+
         stats = DutchGenealogyParser.calculate_summary_statistics(families, [])
-        
+
         assert stats['total_parents'] == 1
         assert stats['total_children'] == 1
         assert stats['total_people'] == 2

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from flask import Flask
 
-from web_app.blueprints.api_database import api_database
 from web_app.blueprints.api_rag import api_rag
 from web_app.blueprints.api_system import api_system
 from web_app.blueprints.entities import entities
@@ -16,6 +15,7 @@ from web_app.blueprints.extraction import extraction
 from web_app.blueprints.main import main
 from web_app.blueprints.prompts import prompts_bp
 from web_app.blueprints.rag import rag
+from web_app.blueprints.tools import tools_bp
 from web_app.commands import register_commands
 from web_app.database import init_app as init_database
 from web_app.error_handlers import register_error_handlers
@@ -28,18 +28,21 @@ PROJECT_ROOT = Path(__file__).parent
 class Config:
     """Configuration class for Flask app with environment variable support"""
 
-    def __init__(self):
-        # Flask configuration
-        self.SECRET_KEY = os.environ.get('SECRET_KEY') or 'family-wiki-secret-key-change-in-production'
+    # Flask configuration
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'family-wiki-secret-key-change-in-production'
 
-        # Database configuration
-        self.SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///family_wiki.db'
-        self.SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Database configuration
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'postgresql://family_wiki_user:family_wiki_password@localhost:5432/family_wiki'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-        # Ollama configuration
-        self.OLLAMA_HOST = os.environ.get('OLLAMA_HOST') or '192.168.1.234'
-        self.OLLAMA_PORT = int(os.environ.get('OLLAMA_PORT', '11434'))
-        self.OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL') or 'aya:35b-23'
+    # Celery configuration
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0'
+    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') or 'redis://localhost:6379/0'
+
+    # Ollama configuration
+    OLLAMA_HOST = os.environ.get('OLLAMA_HOST') or 'localhost'
+    OLLAMA_PORT = int(os.environ.get('OLLAMA_PORT', '11434'))
+    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL') or 'qwen2.5:7b'
 
     @property
     def ollama_base_url(self):
@@ -50,8 +53,11 @@ class Config:
 def create_app(config_class=Config):
     """Application factory"""
     app = Flask(__name__)
-    config_instance = config_class()
-    app.config.from_object(config_instance)
+    app.config.from_object(config_class)
+
+    # Configure Celery app context
+    from web_app.tasks.celery_app import celery_app
+    celery_app.conf.update(app.config)
 
     # Configure static files to use web_app/static
     app.static_folder = PROJECT_ROOT / 'web_app' / 'static'
@@ -59,8 +65,8 @@ def create_app(config_class=Config):
     # Register blueprints
     app.register_blueprint(main)
     app.register_blueprint(prompts_bp)
+    app.register_blueprint(tools_bp)
     app.register_blueprint(api_system)
-    app.register_blueprint(api_database)
     app.register_blueprint(api_rag)
     app.register_blueprint(entities)
     app.register_blueprint(rag)
@@ -77,8 +83,8 @@ def create_app(config_class=Config):
 
     # Configure logging
     logger = get_project_logger(__name__)
-    logger.info(f"Flask app created with Ollama at {config_instance.ollama_base_url} using model {config_instance.OLLAMA_MODEL}")
-    logger.info(f"Database configured: {config_instance.SQLALCHEMY_DATABASE_URI}")
+    logger.info(f"Flask app created with Ollama at http://{app.config['OLLAMA_HOST']}:{app.config['OLLAMA_PORT']} using model {app.config['OLLAMA_MODEL']}")
+    logger.info(f"Database configured: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
     return app
 

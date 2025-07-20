@@ -49,7 +49,7 @@ class DutchGenealogyParser:
         name_str = name_str.strip()
         if not name_str:
             return "", "", ""
-            
+
         parts = name_str.split()
 
         if len(parts) == 1:

@@ -469,3 +469,25 @@ class Source(db.Model):
 
     def __repr__(self):
         return f'<Source {self.title}>'
+
+
+class JobFile(db.Model):
+    """Model for storing uploaded files and job results"""
+    __tablename__ = 'job_files'
+
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100), nullable=False)
+    file_size = db.Column(db.Integer, nullable=False)
+    file_data = db.Column(db.LargeBinary, nullable=False)
+
+    # Job information
+    task_id = db.Column(db.String(36), nullable=False)  # Celery task ID
+    job_type = db.Column(db.String(50), nullable=False)  # ocr, extraction, gedcom, research
+    file_type = db.Column(db.String(20), nullable=False)  # input, output
+
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<JobFile {self.filename} ({self.job_type})>'

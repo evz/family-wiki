@@ -5,8 +5,8 @@ Extraction blueprint for LLM extraction API endpoints
 
 from flask import Blueprint, jsonify, request
 
-from web_app.tasks.extraction_tasks import extract_genealogy_data
 from web_app.shared.logging_config import get_project_logger
+from web_app.tasks.extraction_tasks import extract_genealogy_data
 
 
 logger = get_project_logger(__name__)
@@ -41,7 +41,7 @@ def get_task_status(task_id):
     """Get the status of an extraction task"""
     try:
         task = extract_genealogy_data.AsyncResult(task_id)
-        
+
         if task.state == 'PENDING':
             # Task not found or not started yet
             return jsonify({'error': 'Task not found'}), 404
@@ -81,23 +81,23 @@ def cancel_task(task_id):
     """Cancel a running extraction task"""
     try:
         task = extract_genealogy_data.AsyncResult(task_id)
-        
+
         if task.state == 'PENDING':
             return jsonify({'error': 'Task not found'}), 404
-        
+
         if task.state not in ['PENDING', 'RUNNING']:
             return jsonify({'error': 'Task cannot be cancelled'}), 400
-        
+
         # Revoke the task
         task.revoke(terminate=True)
-        
+
         logger.info(f"Cancelled extraction task: {task_id}")
-        
+
         return jsonify({
             'message': 'Task cancelled successfully',
             'task_id': task_id
         })
-        
+
     except Exception as e:
         logger.error(f"Error cancelling task {task_id}: {e}")
         return jsonify({

@@ -126,14 +126,14 @@ class GenealogyDataRepository:
                         marriage_date=parents.get('marriage_date', ''),
                         notes=parents.get('notes', '')
                     )
-                    
+
                     # Handle marriage place
                     marriage_place_name = parents.get('marriage_place', '')
                     if marriage_place_name:
                         marriage_place = self._get_or_create_place(marriage_place_name, place_cache)
                         if marriage_place:
                             marriage.marriage_place_id = marriage_place.id
-                    
+
                     db.session.add(marriage)
 
             # Create children
