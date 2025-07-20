@@ -108,13 +108,13 @@ Docker/SSL issues block production deployment and development workflow, so they 
 
 ### Cleanup Plan Overview
 
-**Phase 0: Docker & Production Setup** *(Current)*
+**Phase 0: Docker & Production Setup** ✅ **COMPLETED**
 1. ✅ **Documentation cleanup** - Update CLAUDE.md, remove obsolete sections
 2. ✅ **Fix Celery task discovery** - Added task autodiscovery to celery_app.py
 3. ✅ **Add automated SSL with Let's Encrypt** - Added nginx-certbot container
 4. ✅ **Make nginx required in production** - Removed manual SSL, nginx always included
-5. ⏳ **Add production Celery worker** - Missing from prod compose file
-6. ⏳ **Offline-capable `make dev`** - Support local ollama, work without internet if images cached
+5. ✅ **Add production Celery worker** - Added celery worker and Redis to prod compose
+6. ✅ **Offline-capable `make dev`** - Smart build + .env support for local ollama
 
 **Phase 1: Remove Dead Code**
 7. Remove obsolete API blueprints - Delete `api_database.py`, `api_system.py`, `extraction.py` 
@@ -149,17 +149,17 @@ Docker/SSL issues block production deployment and development workflow, so they 
 
 ### How to Resume Work
 
-**Current Task**: Add production Celery worker (Phase 0, Task 5)
+**Current Task**: Remove obsolete API blueprints (Phase 1, Task 1)
 
 **To get started:**
-1. Verify celery worker is properly configured in prod compose
-2. Test that celery worker starts correctly with Redis
-3. Verify background tasks work in production environment
-4. Document any production-specific celery configuration
+1. Check which API blueprints exist: `ls web_app/blueprints/`
+2. Identify obsolete blueprints per TODO.md (api_database.py, api_system.py, extraction.py)
+3. Remove imports from app.py, then delete blueprint files
+4. Run tests to verify nothing breaks: `source .venv/bin/activate && pytest`
 
 **Quality Gates**: Each task must pass `ruff check .` and `pytest` before completion.
 
-**Next Task**: Make `make dev` work offline with cached images
+**Next Task**: Remove dataclass models and their tests
 
 ## Development
 

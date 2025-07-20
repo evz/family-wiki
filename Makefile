@@ -41,11 +41,32 @@ help:
 	@echo "  make reset        - Reset everything (destructive!)"
 
 # Development environment
-dev: build up
+dev: build-if-needed up-dev
+
+# Smart build - only build if images don't exist or build is forced
+build-if-needed:
+	@echo "Checking if Docker images need building..."
+	@if [ "$(FORCE_BUILD)" = "1" ] || ! docker image inspect family-wiki-web:latest >/dev/null 2>&1; then \
+		echo "Building Docker images..."; \
+		docker compose build; \
+	else \
+		echo "Docker images already exist, skipping build (use FORCE_BUILD=1 to force)"; \
+	fi
 
 build:
 	@echo "Building Docker images..."
 	docker compose build
+
+up-dev:
+	@echo "Starting development environment..."
+	@if [ -f .env ]; then \
+		echo "Using .env configuration for local development"; \
+		docker compose --env-file .env up -d; \
+	else \
+		echo "Using default configuration (copy .env.example to .env for offline support)"; \
+		docker compose up -d; \
+	fi
+	@echo "Services started. Web app available at http://localhost:5000"
 
 up:
 	@echo "Starting development environment..."
