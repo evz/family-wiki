@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LLM-powered genealogy extractor using local models (Ollama) or OpenAI
+LLM-powered genealogy extractor using local models (Ollama)
 """
 
 import json
@@ -29,7 +29,6 @@ class LLMGenealogyExtractor:
 
         # Try to detect available LLM services
         self.check_ollama()
-        self.check_openai()
 
     def check_ollama(self) -> bool:
         """Check if Ollama is running locally"""
@@ -43,15 +42,6 @@ class LLMGenealogyExtractor:
             logger.info(f"Ollama not available at {self.ollama_base_url}")
         return False
 
-    def check_openai(self) -> bool:
-        """Check if OpenAI API key is available"""
-        import os
-        if os.getenv('OPENAI_API_KEY'):
-            logger.info("OpenAI API key found")
-            return True
-        else:
-            logger.info("OpenAI API key not found")
-        return False
 
     def query_ollama(self, prompt: str, model: str = None) -> str | None:
         """Query Ollama local LLM"""
