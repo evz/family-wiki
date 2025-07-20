@@ -12,44 +12,65 @@ from web_app.blueprints.entities import entities
 from web_app.blueprints.main import main
 from web_app.blueprints.prompts import prompts_bp
 from web_app.blueprints.rag import rag
-from web_app.blueprints.tools import tools_bp
+# Temporarily disabled for Phase 2 testing - has GEDCOM dependencies
+# from web_app.blueprints.tools import tools_bp
 from web_app.database import init_app as init_database
 from web_app.error_handlers import register_error_handlers
-from web_app.shared.logging_config import get_project_logger
 
 
 PROJECT_ROOT = Path(__file__).parent
 
 
 class Config:
-    """Configuration class for Flask app with environment variable support"""
+    """Configuration class for Flask app with required environment variables"""
 
-    # Flask configuration
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'family-wiki-secret-key-change-in-production'
+    def __init__(self):
+        # Flask configuration
+        self.secret_key = self._require_env('SECRET_KEY')
 
-    # Database configuration
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'postgresql://family_wiki_user:family_wiki_password@localhost:5432/family_wiki'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+        # Database configuration
+        self.sqlalchemy_database_uri = self._require_env('DATABASE_URL')
+        self.sqlalchemy_track_modifications = False
 
-    # Celery configuration
-    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0'
-    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') or 'redis://localhost:6379/0'
+        # Celery configuration
+        self.celery_broker_url = self._require_env('CELERY_BROKER_URL')
+        self.celery_result_backend = self._require_env('CELERY_RESULT_BACKEND')
 
-    # Ollama configuration
-    OLLAMA_HOST = os.environ.get('OLLAMA_HOST') or 'localhost'
-    OLLAMA_PORT = int(os.environ.get('OLLAMA_PORT', '11434'))
-    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL') or 'qwen2.5:7b'
+        # Ollama configuration
+        self.ollama_host = self._require_env('OLLAMA_HOST')
+        self.ollama_port = int(self._require_env('OLLAMA_PORT'))
+        self.ollama_model = self._require_env('OLLAMA_MODEL')
+
+    def _require_env(self, var_name: str) -> str:
+        """Require environment variable or raise error"""
+        value = os.environ.get(var_name)
+        if not value:
+            raise RuntimeError(f"Required environment variable {var_name} is not set")
+        return value
 
     @property
-    def ollama_base_url(self):
+    def ollama_base_url(self) -> str:
         """Construct full Ollama URL"""
-        return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"
+        return f"http://{self.ollama_host}:{self.ollama_port}"
 
 
-def create_app(config_class=Config):
+def create_app(config=None):
     """Application factory"""
     app = Flask(__name__)
-    app.config.from_object(config_class)
+
+    # Initialize configuration
+    if config is None:
+        config = Config()
+
+    # Set Flask config from our config object
+    app.config['SECRET_KEY'] = config.secret_key
+    app.config['SQLALCHEMY_DATABASE_URI'] = config.sqlalchemy_database_uri
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = config.sqlalchemy_track_modifications
+    app.config['CELERY_BROKER_URL'] = config.celery_broker_url
+    app.config['CELERY_RESULT_BACKEND'] = config.celery_result_backend
+    app.config['OLLAMA_HOST'] = config.ollama_host
+    app.config['OLLAMA_PORT'] = config.ollama_port
+    app.config['OLLAMA_MODEL'] = config.ollama_model
 
     # Configure Celery app context
     from web_app.tasks.celery_app import celery_app
@@ -61,21 +82,15 @@ def create_app(config_class=Config):
     # Register blueprints
     app.register_blueprint(main)
     app.register_blueprint(prompts_bp)
-    app.register_blueprint(tools_bp)
+    # app.register_blueprint(tools_bp)  # Temporarily disabled
     app.register_blueprint(entities)
     app.register_blueprint(rag)
 
     # Initialize database
     init_database(app)
 
-
     # Register error handlers
     register_error_handlers(app)
-
-    # Configure logging
-    logger = get_project_logger(__name__)
-    logger.info(f"Flask app created with Ollama at http://{app.config['OLLAMA_HOST']}:{app.config['OLLAMA_PORT']} using model {app.config['OLLAMA_MODEL']}")
-    logger.info(f"Database configured: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
     return app
 

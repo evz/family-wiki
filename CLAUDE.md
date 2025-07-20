@@ -100,9 +100,9 @@ docker-compose up      # Start PostgreSQL + web app
 
 ## Current Phase: Cleanup & Completion (January 2025)
 
-**STATUS: Phase 1 Complete - Starting Phase 2**
+**STATUS: Phase 2 Complete - Starting Phase 3**
 
-Phase 0 and Phase 1 are complete. Phase 2 (Fix Configuration) is starting.
+Phase 0, Phase 1, and Phase 2 are complete. Phase 3 (Complete Database Migration) is starting.
 
 ### Cleanup Plan Overview
 
@@ -120,10 +120,10 @@ Phase 0 and Phase 1 are complete. Phase 2 (Fix Configuration) is starting.
 9. ✅ **Remove OpenAI integration** - Cleaned out OpenAI code from `llm_genealogy_extractor.py`
 10. ✅ **Remove CLI commands** - Deleted `commands.py` and related test files
 
-**Phase 2: Fix Configuration**
-6. Centralize configuration - Remove hardcoded defaults, require env vars
-7. Fix service instantiation - Remove global instances, use dependency injection  
-8. Standardize naming - Fix mixed naming conventions
+**Phase 2: Fix Configuration** ✅ **COMPLETED**
+6. ✅ **Centralize configuration** - Removed hardcoded defaults, require env vars, updated .env.example
+7. ✅ **Fix service instantiation** - Removed global instances from rag.py, use inline instantiation
+8. ✅ **Standardize naming** - Fixed "particle" to "tussenvoegsel" in Dutch utilities
 
 **Phase 3: Complete Database Migration**
 9. OCR to database - Create page table, save OCR results to DB
@@ -147,17 +147,17 @@ Phase 0 and Phase 1 are complete. Phase 2 (Fix Configuration) is starting.
 
 ### How to Resume Work
 
-**Current Task**: Centralize configuration (Phase 2, Task 1)
+**Current Task**: OCR to database (Phase 3, Task 1)
 
 **To get started:**
-1. Check app.py Config class for hardcoded defaults
-2. Update configuration to require environment variables instead of defaults
-3. Check .env.example for missing required variables
-4. Update services to use config instead of hardcoded values
+1. Create database table for storing OCR page results
+2. Update OCR processor to save results to database instead of files
+3. Update services that read OCR data to use database queries
+4. Temporarily fix GEDCOM import issues that prevent app startup
 
 **Quality Gates**: Each task must pass `ruff check .` and `pytest` before completion.
 
-**Next Task**: Fix service instantiation - Remove global instances
+**Next Task**: RAG from database - Update RAG service to load from DB rows
 
 ## Development
 
@@ -248,10 +248,9 @@ ruff check . --fix                  # Auto-fix issues
 - **Management**: `ExtractionPrompt`, `Source`
 
 **Remaining Technical Debt:**
-Per TODO.md analysis, remaining issues after Phase 1 cleanup:
-- Configuration issues (hardcoded defaults, global instances) - **Phase 2 in progress**
-- Incomplete database migration (OCR still saves to files) - **Phase 3 pending**
+Per TODO.md analysis, remaining issues after Phase 2 cleanup:
+- Incomplete database migration (OCR still saves to files) - **Phase 3 in progress**
 - Poor error handling throughout codebase - **Phase 4 pending**
 - Halfway-implemented features (research questions, wiki export) - **Phase 5 pending**
 
-**Progress:** Phase 0 and Phase 1 complete. Dead code removed, Docker/SSL setup complete.
+**Progress:** Phase 0, Phase 1, and Phase 2 complete. Configuration centralized, dead code removed, Docker/SSL setup complete.

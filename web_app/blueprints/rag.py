@@ -5,7 +5,7 @@ RAG (Retrieval-Augmented Generation) blueprint for querying source documents
 from flask import Blueprint, render_template
 
 from web_app.database.models import QuerySession
-from web_app.services.rag_service import rag_service
+from web_app.services.rag_service import RAGService
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -14,9 +14,12 @@ logger = get_project_logger(__name__)
 rag = Blueprint('rag', __name__, url_prefix='/rag')
 
 
+
+
 @rag.route('/')
 def index():
     """RAG query interface"""
+    rag_service = RAGService()
     corpora = rag_service.get_all_corpora()
     active_corpus = rag_service.get_active_corpus()
 
@@ -33,6 +36,7 @@ def index():
 @rag.route('/corpora')
 def corpora_list():
     """List all text corpora"""
+    rag_service = RAGService()
     corpora = rag_service.get_all_corpora()
     return render_template('rag/corpora.html', corpora=corpora)
 

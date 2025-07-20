@@ -391,5 +391,3 @@ ANSWER:"""
             return {}
 
 
-# Global service instance
-rag_service = RAGService()
