@@ -5,8 +5,7 @@ Pure GEDCOM formatting without file I/O operations
 from datetime import datetime
 
 
-# TODO: Restore after database models are implemented
-# from .models import Family, Person
+from web_app.database.models import Family, Person
 
 
 class GEDCOMFormatter:

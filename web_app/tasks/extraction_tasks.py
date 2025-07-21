@@ -115,17 +115,6 @@ class ExtractionTaskManager:
             logger.error(f"Failed to save to database: {e}")
             raise
 
-    def _save_json_backup(self):
-        """Save results as JSON backup"""
-        try:
-            self.extractor.results = {
-                "families": self.all_families,
-                "isolated_individuals": self.all_isolated_individuals
-            }
-            self.extractor.save_results()
-        except Exception as e:
-            logger.warning(f"Failed to save JSON backup: {e}")
-            # Don't fail the task for backup save issues
 
     def run_extraction(self):
         """Run the complete extraction workflow"""
@@ -184,7 +173,6 @@ class ExtractionTaskManager:
         )
 
         save_result = self._save_to_database()
-        self._save_json_backup()
 
         # Return results
         return {

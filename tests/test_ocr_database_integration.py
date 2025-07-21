@@ -80,7 +80,7 @@ class TestOCRDatabaseIntegration:
     @patch('web_app.pdf_processing.ocr_processor.detect')
     def test_detect_language_fallback(self, mock_detect, processor):
         """Test language detection fallback on error"""
-        mock_detect.side_effect = LangDetectException()
+        mock_detect.side_effect = LangDetectException("ERROR", "Detection error")
 
         result = processor._detect_language("Some text that causes detection error")
         assert result == 'unknown'
@@ -158,7 +158,7 @@ class TestOCRDatabaseIntegration:
     def test_extract_text_from_image_tesseract_error(self, mock_tesseract, processor, sample_batch_id, clean_db):
         """Test text extraction with Tesseract error"""
         mock_tesseract.TesseractError = pytesseract.TesseractError
-        mock_tesseract.image_to_data.side_effect = pytesseract.TesseractError("OCR failed")
+        mock_tesseract.image_to_data.side_effect = pytesseract.TesseractError(1, "OCR failed")
 
         mock_image = Mock()
         result = processor._extract_text_from_image(mock_image, sample_batch_id, "test.pdf", 1)

@@ -6,15 +6,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app import Config, create_app
+from app import create_app
+from tests.conftest import BaseTestConfig
 
 
-class RAGBlueprintTestConfig(Config):
+class RAGBlueprintTestConfig(BaseTestConfig):
     """Test configuration"""
     def __init__(self):
         super().__init__()
-        self.TESTING = True
-        self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+        self.sqlalchemy_database_uri = 'sqlite:///:memory:'
 
 
 class TestRAGBlueprint:
@@ -23,7 +23,7 @@ class TestRAGBlueprint:
     @pytest.fixture
     def app(self):
         """Create test Flask app"""
-        app = create_app(RAGBlueprintTestConfig)
+        app = create_app(RAGBlueprintTestConfig())
         return app
 
     @pytest.fixture
@@ -32,12 +32,12 @@ class TestRAGBlueprint:
         return app.test_client()
 
     @pytest.fixture
-    def mock_rag_service(self):
-        """Mock RAG service"""
-        with patch('web_app.blueprints.rag.rag_service') as mock_service:
-            yield mock_service
+    def mock_rag_service_class(self):
+        """Mock RAG service class"""
+        with patch('web_app.blueprints.rag.RAGService') as mock_service_class:
+            yield mock_service_class
 
-    def test_index_route_with_active_corpus(self, client, mock_rag_service):
+    def test_index_route_with_active_corpus(self, client, mock_rag_service_class):
         """Test RAG index route with active corpus"""
         # Mock corpus data
         mock_corpus1 = Mock()
@@ -56,10 +56,11 @@ class TestRAGBlueprint:
             'avg_chunk_length': 512
         }
 
-        # Configure mocks
-        mock_rag_service.get_all_corpora.return_value = [mock_corpus1, mock_corpus2]
-        mock_rag_service.get_active_corpus.return_value = mock_active_corpus
-        mock_rag_service.get_corpus_stats.return_value = mock_corpus_stats
+        # Configure mock instance
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = [mock_corpus1, mock_corpus2]
+        mock_rag_instance.get_active_corpus.return_value = mock_active_corpus
+        mock_rag_instance.get_corpus_stats.return_value = mock_corpus_stats
 
         response = client.get('/rag/')
 
@@ -67,41 +68,43 @@ class TestRAGBlueprint:
         assert b'Test Corpus 1' in response.data
 
         # Verify service calls
-        mock_rag_service.get_all_corpora.assert_called_once()
-        mock_rag_service.get_active_corpus.assert_called_once()
-        mock_rag_service.get_corpus_stats.assert_called_once_with("corpus-1")
+        mock_rag_instance.get_all_corpora.assert_called_once()
+        mock_rag_instance.get_active_corpus.assert_called_once()
+        mock_rag_instance.get_corpus_stats.assert_called_once_with("corpus-1")
 
-    def test_index_route_no_active_corpus(self, client, mock_rag_service):
+    def test_index_route_no_active_corpus(self, client, mock_rag_service_class):
         """Test RAG index route with no active corpus"""
         mock_corpus1 = Mock()
         mock_corpus1.name = "Test Corpus 1"
 
-        # Configure mocks - no active corpus
-        mock_rag_service.get_all_corpora.return_value = [mock_corpus1]
-        mock_rag_service.get_active_corpus.return_value = None
+        # Configure mock instance
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = [mock_corpus1]
+        mock_rag_instance.get_active_corpus.return_value = None
 
         response = client.get('/rag/')
 
         assert response.status_code == 200
 
         # Verify service calls
-        mock_rag_service.get_all_corpora.assert_called_once()
-        mock_rag_service.get_active_corpus.assert_called_once()
+        mock_rag_instance.get_all_corpora.assert_called_once()
+        mock_rag_instance.get_active_corpus.assert_called_once()
         # get_corpus_stats should not be called when no active corpus
-        mock_rag_service.get_corpus_stats.assert_not_called()
+        mock_rag_instance.get_corpus_stats.assert_not_called()
 
-    def test_index_route_empty_corpora(self, client, mock_rag_service):
+    def test_index_route_empty_corpora(self, client, mock_rag_service_class):
         """Test RAG index route with no corpora"""
-        mock_rag_service.get_all_corpora.return_value = []
-        mock_rag_service.get_active_corpus.return_value = None
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = []
+        mock_rag_instance.get_active_corpus.return_value = None
 
         response = client.get('/rag/')
 
         assert response.status_code == 200
-        mock_rag_service.get_all_corpora.assert_called_once()
-        mock_rag_service.get_active_corpus.assert_called_once()
+        mock_rag_instance.get_all_corpora.assert_called_once()
+        mock_rag_instance.get_active_corpus.assert_called_once()
 
-    def test_corpora_list_route(self, client, mock_rag_service):
+    def test_corpora_list_route(self, client, mock_rag_service_class):
         """Test corpora list route"""
         mock_corpus1 = Mock()
         mock_corpus1.name = "Family History Corpus"
@@ -111,7 +114,8 @@ class TestRAGBlueprint:
         mock_corpus2.name = "Genealogy Records"
         mock_corpus2.description = "Birth and death records"
 
-        mock_rag_service.get_all_corpora.return_value = [mock_corpus1, mock_corpus2]
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = [mock_corpus1, mock_corpus2]
 
         response = client.get('/rag/corpora')
 
@@ -119,16 +123,17 @@ class TestRAGBlueprint:
         assert b'Family History Corpus' in response.data
         assert b'Genealogy Records' in response.data
 
-        mock_rag_service.get_all_corpora.assert_called_once()
+        mock_rag_instance.get_all_corpora.assert_called_once()
 
-    def test_corpora_list_route_empty(self, client, mock_rag_service):
+    def test_corpora_list_route_empty(self, client, mock_rag_service_class):
         """Test corpora list route with no corpora"""
-        mock_rag_service.get_all_corpora.return_value = []
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = []
 
         response = client.get('/rag/corpora')
 
         assert response.status_code == 200
-        mock_rag_service.get_all_corpora.assert_called_once()
+        mock_rag_instance.get_all_corpora.assert_called_once()
 
     @patch('web_app.blueprints.rag.QuerySession')
     def test_sessions_list_route(self, mock_query_session_class, client):
@@ -196,9 +201,10 @@ class TestRAGBlueprint:
         assert response.status_code == 404
         mock_query_session_class.query.get_or_404.assert_called_once_with("nonexistent")
 
-    def test_rag_service_error_handling_index(self, client, mock_rag_service):
+    def test_rag_service_error_handling_index(self, client, mock_rag_service_class):
         """Test error handling when rag service fails on index"""
-        mock_rag_service.get_all_corpora.side_effect = Exception("Service error")
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.side_effect = Exception("Service error")
 
         response = client.get('/rag/')
 
@@ -206,23 +212,25 @@ class TestRAGBlueprint:
         assert response.status_code == 500
         assert b'Internal Server Error' in response.data
 
-    def test_rag_service_error_handling_corpora(self, client, mock_rag_service):
+    def test_rag_service_error_handling_corpora(self, client, mock_rag_service_class):
         """Test error handling when rag service fails on corpora list"""
-        mock_rag_service.get_all_corpora.side_effect = Exception("Database error")
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.side_effect = Exception("Database error")
 
         response = client.get('/rag/corpora')
 
         assert response.status_code == 500
         assert b'Internal Server Error' in response.data
 
-    def test_active_corpus_stats_error(self, client, mock_rag_service):
+    def test_active_corpus_stats_error(self, client, mock_rag_service_class):
         """Test error handling when getting corpus stats fails"""
         mock_corpus = Mock()
         mock_corpus.id = "corpus-1"
 
-        mock_rag_service.get_all_corpora.return_value = [mock_corpus]
-        mock_rag_service.get_active_corpus.return_value = mock_corpus
-        mock_rag_service.get_corpus_stats.side_effect = Exception("Stats error")
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = [mock_corpus]
+        mock_rag_instance.get_active_corpus.return_value = mock_corpus
+        mock_rag_instance.get_corpus_stats.side_effect = Exception("Stats error")
 
         response = client.get('/rag/')
 
@@ -257,7 +265,7 @@ class TestRAGBlueprint:
         response = client.post('/rag/sessions/test-id')
         assert response.status_code == 405
 
-    def test_active_corpus_with_complex_stats(self, client, mock_rag_service):
+    def test_active_corpus_with_complex_stats(self, client, mock_rag_service_class):
         """Test index route with complex corpus statistics"""
         mock_corpus = Mock()
         mock_corpus.id = "complex-corpus"
@@ -272,29 +280,31 @@ class TestRAGBlueprint:
             'created_at': '2025-01-01T00:00:00Z'
         }
 
-        mock_rag_service.get_all_corpora.return_value = [mock_corpus]
-        mock_rag_service.get_active_corpus.return_value = mock_corpus
-        mock_rag_service.get_corpus_stats.return_value = complex_stats
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = [mock_corpus]
+        mock_rag_instance.get_active_corpus.return_value = mock_corpus
+        mock_rag_instance.get_corpus_stats.return_value = complex_stats
 
         response = client.get('/rag/')
 
         assert response.status_code == 200
-        mock_rag_service.get_corpus_stats.assert_called_once_with("complex-corpus")
+        mock_rag_instance.get_corpus_stats.assert_called_once_with("complex-corpus")
 
-    def test_corpus_id_conversion_to_string(self, client, mock_rag_service):
+    def test_corpus_id_conversion_to_string(self, client, mock_rag_service_class):
         """Test that corpus ID is properly converted to string for stats call"""
         mock_corpus = Mock()
         mock_corpus.id = 12345  # Integer ID
 
-        mock_rag_service.get_all_corpora.return_value = [mock_corpus]
-        mock_rag_service.get_active_corpus.return_value = mock_corpus
-        mock_rag_service.get_corpus_stats.return_value = {}
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_all_corpora.return_value = [mock_corpus]
+        mock_rag_instance.get_active_corpus.return_value = mock_corpus
+        mock_rag_instance.get_corpus_stats.return_value = {}
 
         response = client.get('/rag/')
 
         assert response.status_code == 200
         # Verify the ID was converted to string
-        mock_rag_service.get_corpus_stats.assert_called_once_with("12345")
+        mock_rag_instance.get_corpus_stats.assert_called_once_with("12345")
 
     def test_blueprint_url_prefix(self, client):
         """Test that all routes have correct /rag prefix"""

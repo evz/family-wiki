@@ -6,15 +6,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app import Config, create_app
+from app import create_app
+from tests.conftest import BaseTestConfig
 
 
-class EntitiesBlueprintTestConfig(Config):
+class EntitiesBlueprintTestConfig(BaseTestConfig):
     """Test configuration"""
     def __init__(self):
         super().__init__()
-        self.TESTING = True
-        self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+        self.sqlalchemy_database_uri = 'sqlite:///:memory:'
 
 
 class TestEntitiesBlueprint:
@@ -23,7 +23,7 @@ class TestEntitiesBlueprint:
     @pytest.fixture
     def app(self):
         """Create test Flask app"""
-        app = create_app(EntitiesBlueprintTestConfig)
+        app = create_app(EntitiesBlueprintTestConfig())
         return app
 
     @pytest.fixture
@@ -32,10 +32,10 @@ class TestEntitiesBlueprint:
         return app.test_client()
 
     @pytest.fixture
-    def mock_extraction_service(self):
-        """Mock extraction service"""
-        with patch('web_app.blueprints.entities.extraction_service') as mock_service:
-            yield mock_service
+    def mock_genealogy_repository(self):
+        """Mock genealogy repository"""
+        with patch('web_app.blueprints.entities.GenealogyDataRepository') as mock_repo:
+            yield mock_repo
 
     @pytest.fixture
     def mock_models(self):
@@ -49,7 +49,7 @@ class TestEntitiesBlueprint:
 
         return mocks
 
-    def test_index_route_with_stats(self, client, mock_extraction_service):
+    def test_index_route_with_stats(self, client, mock_genealogy_repository):
         """Test entities index route with database stats"""
         mock_stats = {
             'persons': 10,
@@ -60,18 +60,21 @@ class TestEntitiesBlueprint:
             'total_entities': 30
         }
 
-        mock_extraction_service.get_database_stats.return_value = mock_stats
+        # Configure mock instance
+        mock_repo_instance = mock_genealogy_repository.return_value
+        mock_repo_instance.get_database_stats.return_value = mock_stats
 
         response = client.get('/entities/')
 
         assert response.status_code == 200
         assert b'Database Entities' in response.data
         assert b'10' in response.data  # persons count
-        mock_extraction_service.get_database_stats.assert_called_once()
+        mock_repo_instance.get_database_stats.assert_called_once()
 
-    def test_index_route_no_stats(self, client, mock_extraction_service):
+    def test_index_route_no_stats(self, client, mock_genealogy_repository):
         """Test entities index route with no stats"""
-        mock_extraction_service.get_database_stats.return_value = {}
+        mock_repo_instance = mock_genealogy_repository.return_value
+        mock_repo_instance.get_database_stats.return_value = {}
 
         response = client.get('/entities/')
 
@@ -334,9 +337,10 @@ class TestEntitiesBlueprint:
         assert b'Jane' in response.data
         assert b'Church wedding' in response.data
 
-    def test_error_handling_index(self, client, mock_extraction_service):
+    def test_error_handling_index(self, client, mock_genealogy_repository):
         """Test error handling on index route"""
-        mock_extraction_service.get_database_stats.side_effect = Exception("Database error")
+        mock_repo_instance = mock_genealogy_repository.return_value
+        mock_repo_instance.get_database_stats.side_effect = Exception("Database error")
 
         response = client.get('/entities/')
 

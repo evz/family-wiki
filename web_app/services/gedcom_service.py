@@ -7,10 +7,9 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-from web_app.shared import DutchDateParser, DutchNameParser
-
-# Temporarily disabled - needs refactor to use SQLAlchemy models
-# from web_app.shared import GEDCOMWriter, Person
+from web_app.database.models import Person
+from web_app.repositories.gedcom_repository import GedcomRepository
+from web_app.shared import DutchDateParser, DutchNameParser, GEDCOMParser, GEDCOMWriter
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -86,10 +85,69 @@ class LLMGEDCOMGenerator:
         return {"people": len(people), "output_file": str(output_path)}
 
 class GedcomService:
-    """Service for managing GEDCOM generation"""
+    """Service for managing GEDCOM import/export operations"""
 
     def __init__(self):
         self.logger = get_project_logger(__name__)
+
+    def import_gedcom(self, file_path: str, progress_callback: Callable = None) -> dict:
+        """Import GEDCOM file into database"""
+        try:
+            self.logger.info(f"Starting GEDCOM import from {file_path}")
+
+            if progress_callback:
+                progress_callback({"status": "starting", "message": "Parsing GEDCOM file"})
+
+            # Parse GEDCOM file to structured data
+            parser = GEDCOMParser()
+            parsed_data = parser.parse_file(file_path)
+
+            if progress_callback:
+                progress_callback({"status": "running", "message": "Saving to database"})
+
+            # Save to database using repository
+            repo = GedcomRepository()
+            persons = {}
+
+            # Create persons first
+            for gedcom_id, person_data in parsed_data['persons'].items():
+                person = repo.create_person(person_data)
+                persons[gedcom_id] = person
+
+            # Create families and establish relationships
+            for _gedcom_id, family_data in parsed_data['families'].items():
+                family = repo.create_family(family_data)
+                repo.establish_family_relationships(family, family_data, persons)
+
+            repo.commit()
+
+            results = {
+                "persons_count": len(parsed_data['persons']),
+                "families_count": len(parsed_data['families'])
+            }
+
+            if progress_callback:
+                progress_callback({"status": "completed", "results": results})
+
+            self.logger.info("GEDCOM import completed successfully")
+
+            return {
+                "success": True,
+                "message": "GEDCOM import completed",
+                "results": results
+            }
+
+        except Exception as e:
+            error_msg = f"GEDCOM import failed: {str(e)}"
+            self.logger.error(error_msg)
+
+            if progress_callback:
+                progress_callback({"status": "failed", "error": error_msg})
+
+            return {
+                "success": False,
+                "error": error_msg
+            }
 
     def generate_gedcom(self, input_file: str = None, output_file: str = None, progress_callback: Callable = None) -> dict:
         """Generate GEDCOM file from extraction results"""

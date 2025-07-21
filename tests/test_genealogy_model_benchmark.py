@@ -11,31 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from app import create_app
 from web_app.pdf_processing.genealogy_model_benchmark import GenealogyModelBenchmark
-
-
-class TestConfig:
-    """Test configuration"""
-    SECRET_KEY = 'test-secret-key'
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    TESTING = True
-    OLLAMA_HOST = 'localhost'
-    OLLAMA_PORT = 11434
-    OLLAMA_MODEL = 'test-model'
-
-    @property
-    def ollama_base_url(self):
-        """Construct full Ollama URL"""
-        return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"
-
-
-@pytest.fixture
-def app():
-    """Create test Flask application"""
-    app = create_app(TestConfig)
-    return app
 
 
 class TestGenealogyModelBenchmark:
@@ -43,25 +19,23 @@ class TestGenealogyModelBenchmark:
 
     def test_initialization(self, app):
         """Test benchmark initialization"""
-        with app.app_context():
-            benchmark = GenealogyModelBenchmark()
+        benchmark = GenealogyModelBenchmark()
 
-            assert len(benchmark.test_cases) == 3
-            assert len(benchmark.models_to_test) == 5
-            assert benchmark.results == {}
+        assert len(benchmark.test_cases) == 3
+        assert len(benchmark.models_to_test) == 5
+        assert benchmark.results == {}
 
-            # Check test cases structure
-            for test_case in benchmark.test_cases:
-                assert 'name' in test_case
-                assert 'text' in test_case
-                assert 'expected_people' in test_case
-                assert isinstance(test_case['expected_people'], int)
-                assert test_case['expected_people'] > 0
+        # Check test cases structure
+        for test_case in benchmark.test_cases:
+            assert 'name' in test_case
+            assert 'text' in test_case
+            assert 'expected_people' in test_case
+            assert isinstance(test_case['expected_people'], int)
+            assert test_case['expected_people'] > 0
 
     def test_test_cases_content(self, app):
         """Test test cases have expected content"""
-        with app.app_context():
-            benchmark = GenealogyModelBenchmark()
+        benchmark = GenealogyModelBenchmark()
 
         # First test case
         test_case = benchmark.test_cases[0]
@@ -84,8 +58,7 @@ class TestGenealogyModelBenchmark:
 
     def test_models_to_test_list(self, app):
         """Test models list is properly configured"""
-        with app.app_context():
-            benchmark = GenealogyModelBenchmark()
+        benchmark = GenealogyModelBenchmark()
 
         expected_models = [
             "qwen2.5:7b",
@@ -98,7 +71,7 @@ class TestGenealogyModelBenchmark:
         assert benchmark.models_to_test == expected_models
 
     @patch('requests.get')
-    def test_check_ollama_running_success(self, mock_get):
+    def test_check_ollama_running_success(self, mock_get, app):
         """Test Ollama running check when service is available"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -111,7 +84,7 @@ class TestGenealogyModelBenchmark:
         mock_get.assert_called_once_with("http://localhost:11434/api/tags", timeout=5)
 
     @patch('requests.get')
-    def test_check_ollama_running_failure(self, mock_get):
+    def test_check_ollama_running_failure(self, mock_get, app):
         """Test Ollama running check when service is not available"""
         mock_get.side_effect = requests.exceptions.RequestException("Connection failed")
 
@@ -122,7 +95,7 @@ class TestGenealogyModelBenchmark:
         mock_get.assert_called_once_with("http://localhost:11434/api/tags", timeout=5)
 
     @patch('requests.get')
-    def test_check_ollama_running_error_status(self, mock_get):
+    def test_check_ollama_running_error_status(self, mock_get, app):
         """Test Ollama running check with error status"""
         mock_response = Mock()
         mock_response.status_code = 500
@@ -134,7 +107,7 @@ class TestGenealogyModelBenchmark:
         assert result is False
 
     @patch('subprocess.run')
-    def test_install_model_success(self, mock_run):
+    def test_install_model_success(self, mock_run, app):
         """Test successful model installation"""
         mock_result = Mock()
         mock_result.returncode = 0
@@ -151,7 +124,7 @@ class TestGenealogyModelBenchmark:
         )
 
     @patch('subprocess.run')
-    def test_install_model_failure(self, mock_run):
+    def test_install_model_failure(self, mock_run, app):
         """Test failed model installation"""
         mock_result = Mock()
         mock_result.returncode = 1
@@ -164,7 +137,7 @@ class TestGenealogyModelBenchmark:
         assert result is False
 
     @patch('subprocess.run')
-    def test_install_model_timeout(self, mock_run):
+    def test_install_model_timeout(self, mock_run, app):
         """Test model installation timeout"""
         mock_run.side_effect = subprocess.TimeoutExpired(['ollama', 'pull'], 600)
 
@@ -174,7 +147,7 @@ class TestGenealogyModelBenchmark:
         assert result is False
 
     @patch('subprocess.run')
-    def test_install_model_exception(self, mock_run):
+    def test_install_model_exception(self, mock_run, app):
         """Test model installation with exception"""
         mock_run.side_effect = Exception("Subprocess error")
 
@@ -183,7 +156,7 @@ class TestGenealogyModelBenchmark:
 
         assert result is False
 
-    def test_create_genealogy_prompt(self):
+    def test_create_genealogy_prompt(self, app):
         """Test genealogy prompt creation"""
         benchmark = GenealogyModelBenchmark()
 
@@ -202,7 +175,7 @@ class TestGenealogyModelBenchmark:
         assert "confidence" in prompt
 
     @patch('requests.post')
-    def test_test_model_on_case_success(self, mock_post):
+    def test_test_model_on_case_success(self, mock_post, app):
         """Test successful model testing on a case"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -225,7 +198,7 @@ class TestGenealogyModelBenchmark:
         assert result['json_valid'] is True
 
     @patch('requests.post')
-    def test_test_model_on_case_http_error(self, mock_post):
+    def test_test_model_on_case_http_error(self, mock_post, app):
         """Test model testing with HTTP error"""
         mock_response = Mock()
         mock_response.status_code = 500
@@ -242,7 +215,7 @@ class TestGenealogyModelBenchmark:
         assert result['response_time'] == 1.0
 
     @patch('requests.post')
-    def test_test_model_on_case_no_json(self, mock_post):
+    def test_test_model_on_case_no_json(self, mock_post, app):
         """Test model testing with no JSON in response"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -262,7 +235,7 @@ class TestGenealogyModelBenchmark:
         assert result['response_time'] == 1.0
 
     @patch('requests.post')
-    def test_test_model_on_case_invalid_json(self, mock_post):
+    def test_test_model_on_case_invalid_json(self, mock_post, app):
         """Test model testing with invalid JSON"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -283,7 +256,7 @@ class TestGenealogyModelBenchmark:
         assert result['json_valid'] is False
 
     @patch('requests.post')
-    def test_test_model_on_case_request_exception(self, mock_post):
+    def test_test_model_on_case_request_exception(self, mock_post, app):
         """Test model testing with request exception"""
         mock_post.side_effect = requests.exceptions.RequestException("Connection failed")
 
@@ -297,7 +270,7 @@ class TestGenealogyModelBenchmark:
         assert result['error'] == "Connection failed"
 
     @patch('requests.post')
-    def test_test_model_on_case_perfect_accuracy(self, mock_post):
+    def test_test_model_on_case_perfect_accuracy(self, mock_post, app):
         """Test model testing with perfect accuracy"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -318,7 +291,7 @@ class TestGenealogyModelBenchmark:
         assert result['accuracy_score'] == 1.0
 
     @patch('requests.post')
-    def test_test_model_on_case_over_accuracy(self, mock_post):
+    def test_test_model_on_case_over_accuracy(self, mock_post, app):
         """Test model testing with more people found than expected"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -338,7 +311,7 @@ class TestGenealogyModelBenchmark:
         assert result['expected_people'] == 2
         assert result['accuracy_score'] == 1.0  # Capped at 1.0
 
-    def test_benchmark_model_success(self):
+    def test_benchmark_model_success(self, app):
         """Test successful model benchmarking"""
         benchmark = GenealogyModelBenchmark()
 
@@ -372,7 +345,7 @@ class TestGenealogyModelBenchmark:
         assert abs(result['avg_accuracy'] - 1.7/3) < 0.0001  # Total accuracy (0.8 + 0.9 + 0 for failed) / 3 tests
         assert abs(result['overall_score'] - ((2/3) * 0.6 + (1.7/3) * 0.4)) < 0.0001
 
-    def test_benchmark_model_all_failures(self):
+    def test_benchmark_model_all_failures(self, app):
         """Test model benchmarking with all failures"""
         benchmark = GenealogyModelBenchmark()
 
@@ -403,7 +376,7 @@ class TestGenealogyModelBenchmark:
         assert result['avg_accuracy'] == 0.0
         assert result['overall_score'] == 0.0
 
-    def test_run_full_benchmark_ollama_not_running(self):
+    def test_run_full_benchmark_ollama_not_running(self, app):
         """Test full benchmark when Ollama is not running"""
         benchmark = GenealogyModelBenchmark()
 
@@ -412,7 +385,7 @@ class TestGenealogyModelBenchmark:
 
         assert benchmark.results == {}
 
-    def test_run_full_benchmark_success(self):
+    def test_run_full_benchmark_success(self, app):
         """Test successful full benchmark run"""
         benchmark = GenealogyModelBenchmark()
 
@@ -433,7 +406,7 @@ class TestGenealogyModelBenchmark:
         assert 'qwen2.5:7b' in benchmark.results
         assert benchmark.results['qwen2.5:7b'] == mock_model_result
 
-    def test_run_full_benchmark_skip_install(self):
+    def test_run_full_benchmark_skip_install(self, app):
         """Test full benchmark without installing models"""
         benchmark = GenealogyModelBenchmark()
 
@@ -451,7 +424,7 @@ class TestGenealogyModelBenchmark:
 
         assert 'qwen2.5:7b' in benchmark.results
 
-    def test_run_full_benchmark_install_failure(self):
+    def test_run_full_benchmark_install_failure(self, app):
         """Test full benchmark with model installation failure"""
         benchmark = GenealogyModelBenchmark()
 
@@ -462,14 +435,14 @@ class TestGenealogyModelBenchmark:
 
         assert benchmark.results == {}
 
-    def test_print_results_no_results(self):
+    def test_print_results_no_results(self, app):
         """Test printing results when no results available"""
         benchmark = GenealogyModelBenchmark()
 
         # Should not raise exception
         benchmark.print_results()
 
-    def test_print_results_with_results(self):
+    def test_print_results_with_results(self, app):
         """Test printing results with actual results"""
         benchmark = GenealogyModelBenchmark()
 
@@ -491,7 +464,7 @@ class TestGenealogyModelBenchmark:
         # Should not raise exception
         benchmark.print_results()
 
-    def test_save_results(self):
+    def test_save_results(self, app):
         """Test saving results to file"""
         benchmark = GenealogyModelBenchmark()
 
@@ -518,7 +491,7 @@ class TestGenealogyModelBenchmark:
         finally:
             Path(output_file).unlink()
 
-    def test_save_results_empty(self):
+    def test_save_results_empty(self, app):
         """Test saving empty results"""
         benchmark = GenealogyModelBenchmark()
 
@@ -537,7 +510,7 @@ class TestGenealogyModelBenchmark:
             Path(output_file).unlink()
 
     @patch('builtins.input')
-    def test_main_function_proceed(self, mock_input):
+    def test_main_function_proceed(self, mock_input, app):
         """Test main function when user proceeds"""
         mock_input.return_value = 'y'
 
@@ -554,7 +527,7 @@ class TestGenealogyModelBenchmark:
             mock_benchmark.save_results.assert_called_once()
 
     @patch('builtins.input')
-    def test_main_function_cancel(self, mock_input):
+    def test_main_function_cancel(self, mock_input, app):
         """Test main function when user cancels"""
         mock_input.return_value = 'n'
 
@@ -572,7 +545,7 @@ class TestGenealogyModelBenchmark:
             mock_benchmark.save_results.assert_not_called()
 
     @patch('builtins.input')
-    def test_main_function_invalid_input(self, mock_input):
+    def test_main_function_invalid_input(self, mock_input, app):
         """Test main function with invalid input"""
         mock_input.return_value = 'invalid'
 

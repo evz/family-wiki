@@ -37,7 +37,7 @@ class TestRAGService:
             assert saved_corpus is not None
             assert saved_corpus.name == "Test Corpus"
 
-    def test_get_active_corpus(self, app, db):
+    def test_get_active_corpus(self, rag_service, app, db):
         """Test getting the active corpus"""
         with app.app_context():
             # Create multiple corpora
@@ -54,7 +54,7 @@ class TestRAGService:
             assert active.id == corpus2.id
             assert active.name == "Corpus 2"
 
-    def test_get_all_corpora(self, app, db):
+    def test_get_all_corpora(self, rag_service, app, db):
         """Test getting all corpora"""
         with app.app_context():
             # Initially empty
@@ -71,7 +71,7 @@ class TestRAGService:
             assert "Corpus 1" in corpus_names
             assert "Corpus 2" in corpus_names
 
-    def test_chunk_text_basic(self, app):
+    def test_chunk_text_basic(self, rag_service, app):
         """Test basic text chunking"""
         with app.app_context():
             text = "This is a test. " * 100  # 1600 characters
@@ -85,7 +85,7 @@ class TestRAGService:
                 # Should have some overlap
                 assert chunks[i][-50:] in chunks[i+1] or chunks[i+1][:50] in chunks[i]
 
-    def test_chunk_text_sentence_boundaries(self, app):
+    def test_chunk_text_sentence_boundaries(self, rag_service, app):
         """Test chunking respects sentence boundaries"""
         with app.app_context():
             text = "First sentence. Second sentence. Third sentence. Fourth sentence."
@@ -100,7 +100,7 @@ class TestRAGService:
             assert 'Fourth sentence' in combined
 
     @patch('requests.post')
-    def test_generate_embedding_success(self, mock_post, app):
+    def test_generate_embedding_success(self, mock_post, rag_service, app):
         """Test successful embedding generation"""
         with app.app_context():
             mock_response = Mock()
@@ -114,7 +114,7 @@ class TestRAGService:
             mock_post.assert_called_once()
 
     @patch('requests.post')
-    def test_generate_embedding_failure(self, mock_post, app):
+    def test_generate_embedding_failure(self, mock_post, rag_service, app):
         """Test embedding generation failure"""
         with app.app_context():
             mock_response = Mock()
@@ -126,7 +126,7 @@ class TestRAGService:
             assert embedding is None
 
     @patch('requests.post')
-    def test_generate_embedding_exception(self, mock_post, app):
+    def test_generate_embedding_exception(self, mock_post, rag_service, app):
         """Test embedding generation with exception"""
         with app.app_context():
             mock_post.side_effect = Exception("Connection error")
@@ -166,8 +166,8 @@ class TestRAGService:
                 assert len(chunk.embedding) == 1024
                 assert abs(chunk.embedding[0] - 0.1) < 0.01
 
-    @patch.object(rag_service, 'generate_embedding')
-    def test_store_source_text_deduplication(self, mock_embedding, app, db):
+    @patch.object(RAGService, 'generate_embedding')
+    def test_store_source_text_deduplication(self, mock_embedding, rag_service, app, db):
         """Test source text deduplication"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -192,7 +192,7 @@ class TestRAGService:
             assert chunks1 > 0
             assert chunks2 == 0
 
-    def test_store_source_text_invalid_corpus(self, app, db):
+    def test_store_source_text_invalid_corpus(self, rag_service, app, db):
         """Test storing text with invalid corpus ID"""
         with app.app_context():
             with pytest.raises(ValueError, match="Corpus not found"):
@@ -205,8 +205,8 @@ class TestRAGService:
     @patch('pathlib.Path.exists')
     @patch('pathlib.Path.glob')
     @patch('builtins.open')
-    @patch.object(rag_service, 'store_source_text')
-    def test_load_pdf_text_files(self, mock_store, mock_open, mock_glob, mock_exists, app, db):
+    @patch.object(RAGService, 'store_source_text')
+    def test_load_pdf_text_files(self, mock_store, mock_open, mock_glob, mock_exists, rag_service, app, db):
         """Test loading PDF text files"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -240,7 +240,7 @@ class TestRAGService:
             assert calls[1][1]['page_number'] == 2
 
     @patch('pathlib.Path.exists')
-    def test_load_pdf_text_files_missing_directory(self, mock_exists, app, db):
+    def test_load_pdf_text_files_missing_directory(self, mock_exists, rag_service, app, db):
         """Test loading PDF text files when directory doesn't exist"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -251,7 +251,7 @@ class TestRAGService:
             assert result['success'] is False
             assert 'directory not found' in result['error']
 
-    def test_create_query_session(self, app, db):
+    def test_create_query_session(self, rag_service, app, db):
         """Test creating a query session"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -270,8 +270,8 @@ class TestRAGService:
             saved_session = QuerySession.query.get(session.id)
             assert saved_session is not None
 
-    @patch.object(rag_service, 'generate_embedding')
-    def test_semantic_search(self, mock_embedding, app, db):
+    @patch.object(RAGService, 'generate_embedding')
+    def test_semantic_search(self, mock_embedding, rag_service, app, db):
         """Test semantic search functionality"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -302,8 +302,8 @@ class TestRAGService:
                 assert results[0][0] == mock_chunk
                 assert results[0][1] == 0.85
 
-    @patch.object(rag_service, 'generate_embedding')
-    def test_semantic_search_no_corpus(self, mock_embedding, app, db):
+    @patch.object(RAGService, 'generate_embedding')
+    def test_semantic_search_no_corpus(self, mock_embedding, rag_service, app, db):
         """Test semantic search with no active corpus"""
         with app.app_context():
             mock_embedding.return_value = [0.1] * 1024
@@ -312,8 +312,8 @@ class TestRAGService:
 
             assert len(results) == 0
 
-    @patch.object(rag_service, 'generate_embedding')
-    def test_semantic_search_no_embedding(self, mock_embedding, app, db):
+    @patch.object(RAGService, 'generate_embedding')
+    def test_semantic_search_no_embedding(self, mock_embedding, rag_service, app, db):
         """Test semantic search when embedding generation fails"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -326,7 +326,7 @@ class TestRAGService:
 
             assert len(results) == 0
 
-    def test_get_corpus_stats(self, app, db):
+    def test_get_corpus_stats(self, rag_service, app, db):
         """Test getting corpus statistics"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -348,16 +348,16 @@ class TestRAGService:
             assert stats['unique_files'] == 1
             assert stats['embedding_model'] == corpus.embedding_model
 
-    def test_get_corpus_stats_invalid_id(self, app, db):
+    def test_get_corpus_stats_invalid_id(self, rag_service, app, db):
         """Test getting stats for invalid corpus ID"""
         with app.app_context():
             stats = rag_service.get_corpus_stats("nonexistent-id")
 
             assert stats == {}
 
-    @patch.object(rag_service, 'semantic_search')
+    @patch.object(RAGService, 'semantic_search')
     @patch('requests.post')
-    def test_generate_rag_response(self, mock_post, mock_search, app, db):
+    def test_generate_rag_response(self, mock_post, mock_search, rag_service, app, db):
         """Test RAG response generation"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -391,8 +391,8 @@ class TestRAGService:
             assert query.retrieved_chunks == ["chunk-id"]
             assert query.similarity_scores == [0.85]
 
-    @patch.object(rag_service, 'semantic_search')
-    def test_generate_rag_response_no_results(self, mock_search, app, db):
+    @patch.object(RAGService, 'semantic_search')
+    def test_generate_rag_response_no_results(self, mock_search, rag_service, app, db):
         """Test RAG response when no search results found"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
@@ -408,7 +408,7 @@ class TestRAGService:
             assert query.status == "completed"
             assert "couldn't find relevant information" in query.answer
 
-    def test_generate_rag_response_invalid_session(self, app, db):
+    def test_generate_rag_response_invalid_session(self, rag_service, app, db):
         """Test RAG response with invalid session ID"""
         with app.app_context():
             with pytest.raises(ValueError, match="Session not found"):

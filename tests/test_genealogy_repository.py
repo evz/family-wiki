@@ -6,6 +6,7 @@ Tests for GenealogyDataRepository
 import pytest
 
 from app import create_app
+from tests.conftest import BaseTestConfig
 from web_app.database import db
 from web_app.database.models import Family, Person, Place
 from web_app.repositories.genealogy_repository import GenealogyDataRepository
@@ -14,20 +15,7 @@ from web_app.repositories.genealogy_repository import GenealogyDataRepository
 @pytest.fixture
 def app():
     """Create test app"""
-    class TestConfig:
-        TESTING = True
-        SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-        WTF_CSRF_ENABLED = False
-        SECRET_KEY = 'test-secret-key'
-        OLLAMA_HOST = 'localhost'
-        OLLAMA_PORT = 11434
-        OLLAMA_MODEL = 'test-model'
-
-        @property
-        def ollama_base_url(self):
-            return f"http://{self.OLLAMA_HOST}:{self.OLLAMA_PORT}"
-
-    app = create_app(TestConfig)
+    app = create_app(BaseTestConfig())
 
     with app.app_context():
         db.create_all()

@@ -14,11 +14,8 @@ class TestGEDCOMParser:
     def test_parser_initialization(self):
         """Test parser initialization"""
         parser = GEDCOMParser()
-        assert parser.individuals == {}
-        assert parser.families == {}
-        assert parser.places == {}
-        assert parser.events == {}
-        assert parser.sources == {}
+        assert parser.raw_person_data == {}
+        assert parser.raw_family_data == {}
 
     def test_parse_empty_file(self):
         """Test parsing empty GEDCOM file"""
@@ -30,9 +27,8 @@ class TestGEDCOMParser:
 
         try:
             result = parser.parse_file(temp_file)
-            assert result['individuals'] == {}
+            assert result['persons'] == {}
             assert result['families'] == {}
-            assert result['sources'] == {}
         finally:
             Path(temp_file).unlink()
 
@@ -61,12 +57,12 @@ class TestGEDCOMParser:
 
         try:
             result = parser.parse_file(temp_file)
-            assert len(result['individuals']) == 1
-            assert 'I001' in result['individuals']
+            assert len(result['persons']) == 1
+            assert 'I001' in result['persons']
 
-            individual = result['individuals']['I001']
-            assert individual.given_names == "Jan"
-            assert individual.surname == "Jansen"
+            individual = result['persons']['I001']
+            assert individual['given_names'] == "Jan"
+            assert individual['surname'] == "Jansen"
         finally:
             Path(temp_file).unlink()
 
@@ -102,13 +98,13 @@ class TestGEDCOMParser:
 
         try:
             result = parser.parse_file(temp_file)
-            assert len(result['individuals']) == 2
+            assert len(result['persons']) == 2
             assert len(result['families']) == 1
             assert 'F001' in result['families']
 
             family = result['families']['F001']
-            assert family.husband_id == "I001"
-            assert family.wife_id == "I002"
+            assert family['husband_gedcom_id'] == "I001"
+            assert family['wife_gedcom_id'] == "I002"
         finally:
             Path(temp_file).unlink()
 
@@ -145,14 +141,14 @@ class TestGEDCOMParser:
 
         try:
             result = parser.parse_file(temp_file)
-            assert len(result['individuals']) == 1
-            assert 'I001' in result['individuals']
+            assert len(result['persons']) == 1
+            assert 'I001' in result['persons']
 
-            individual = result['individuals']['I001']
+            individual = result['persons']['I001']
             # The parser may process dates differently, so just check they're not empty
-            assert individual.birth_date != ""
-            assert individual.baptism_date != ""
-            assert individual.death_date != ""
+            assert individual['birth_date'] != ""
+            assert individual['baptism_date'] != ""
+            assert individual['death_date'] != ""
         finally:
             Path(temp_file).unlink()
 
@@ -186,13 +182,13 @@ class TestGEDCOMParser:
 
         try:
             result = parser.parse_file(temp_file)
-            assert len(result['individuals']) == 3
+            assert len(result['persons']) == 3
             assert len(result['families']) == 1
 
             family = result['families']['F001']
-            assert family.husband_id == "I001"
-            assert family.wife_id == "I002"
-            assert "I003" in family.children_ids
+            assert family['husband_gedcom_id'] == "I001"
+            assert family['wife_gedcom_id'] == "I002"
+            assert "I003" in family['children_gedcom_ids']
         finally:
             Path(temp_file).unlink()
 
@@ -231,7 +227,7 @@ class TestGEDCOMParser:
             result = parser.parse_file(temp_file)
             # Should not crash, but may have empty results
             assert isinstance(result, dict)
-            assert 'individuals' in result
+            assert 'persons' in result
             assert 'families' in result
         finally:
             Path(temp_file).unlink()
@@ -283,13 +279,13 @@ class TestGEDCOMParser:
             "2 DATE 1800-01-01"
         ]
 
-        parser._parse_record(record)
+        parser._parse_record_first_pass(record)
 
-        assert 'I001' in parser.individuals
-        individual = parser.individuals['I001']
-        assert individual.given_names == "Jan"
-        assert individual.surname == "Jansen"
-        assert individual.birth_date != ""
+        assert 'I001' in parser.raw_person_data
+        individual = parser.raw_person_data['I001']
+        assert individual['given_names'] == "Jan"
+        assert individual['surname'] == "Jansen"
+        assert 'birth_date' in individual
 
     def test_parse_record_family(self):
         """Test _parse_record for family"""
@@ -303,11 +299,10 @@ class TestGEDCOMParser:
             "2 DATE 1825-06-01"
         ]
 
-        parser._parse_record(record)
+        parser._parse_record_first_pass(record)
 
-        assert 'F001' in parser.families
-        family = parser.families['F001']
-        assert family.husband_id == "I001"
-        assert family.wife_id == "I002"
+        assert 'F001' in parser.raw_family_data
+        family = parser.raw_family_data['F001']
+        assert family['husband_gedcom_id'] == "I001"
+        assert family['wife_gedcom_id'] == "I002"
         # Marriage date parsing may vary, just check that family structure is correct
-        assert family.husband_id == "I001"

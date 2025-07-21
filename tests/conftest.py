@@ -74,35 +74,35 @@ def sample_llm_result():
     }
 
 
+class BaseTestConfig:
+    """Base test configuration that doesn't require environment variables"""
+    def __init__(self):
+        # App configuration
+        self.secret_key = 'test-secret-key'
+
+        # Database configuration
+        self.sqlalchemy_database_uri = 'sqlite:///:memory:'
+        self.sqlalchemy_track_modifications = False
+
+        # Celery configuration
+        self.celery_broker_url = 'redis://localhost:6379/0'
+        self.celery_result_backend = 'redis://localhost:6379/1'
+
+        # Ollama configuration
+        self.ollama_host = 'localhost'
+        self.ollama_port = 11434
+        self.ollama_model = 'test-model'
+
+    @property
+    def ollama_base_url(self):
+        return f"http://{self.ollama_host}:{self.ollama_port}"
+
+
 @pytest.fixture
 def app():
     """Create Flask app for testing"""
-    class TestConfig:
-        def __init__(self):
-            # App configuration
-            self.secret_key = 'test-secret-key'
-
-            # Database configuration
-            self.sqlalchemy_database_uri = 'sqlite:///:memory:'
-            self.sqlalchemy_track_modifications = False
-
-            # Celery configuration
-            self.celery_broker_url = 'redis://localhost:6379/0'
-            self.celery_result_backend = 'redis://localhost:6379/1'
-
-            # Ollama configuration
-            self.ollama_host = 'localhost'
-            self.ollama_port = 11434
-            self.ollama_model = 'test-model'
-
-        @property
-        def ollama_base_url(self):
-            return f"http://{self.ollama_host}:{self.ollama_port}"
-
-    app = create_app(TestConfig())
-
-    with app.app_context():
-        yield app
+    app = create_app(BaseTestConfig())
+    return app
 
 
 @pytest.fixture
@@ -130,6 +130,7 @@ def clean_db(db):
             ExtractionPrompt,
             Family,
             Marriage,
+            OcrPage,
             Person,
             Place,
             Query,
@@ -148,6 +149,7 @@ def clean_db(db):
         Event.query.delete()
         Person.query.delete()
         Place.query.delete()
+        OcrPage.query.delete()
         ExtractionPrompt.query.delete()
 
         db.session.commit()

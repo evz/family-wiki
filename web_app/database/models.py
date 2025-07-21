@@ -6,17 +6,53 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQL_UUID
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.types import TypeDecorator, CHAR
 
 from . import db
+
+
+class UUID(TypeDecorator):
+    """Platform-independent UUID type.
+    
+    Uses PostgreSQL's UUID type when available, otherwise uses CHAR(36)
+    to store the UUID string.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PostgreSQL_UUID())
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return str(uuid.UUID(value))
+            return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                return uuid.UUID(value)
+            return value
 
 
 class TextCorpus(db.Model):
     """Model for grouping related source documents for RAG queries"""
     __tablename__ = 'text_corpora'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
@@ -41,8 +77,8 @@ class SourceText(db.Model):
     """Model for storing source text chunks with embeddings for RAG"""
     __tablename__ = 'source_texts'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    corpus_id = db.Column(UUID(as_uuid=True), db.ForeignKey('text_corpora.id'), nullable=False)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
+    corpus_id = db.Column(UUID(), db.ForeignKey('text_corpora.id'), nullable=False)
 
     # Source document info
     filename = db.Column(db.String(255), nullable=False)
@@ -114,8 +150,8 @@ class QuerySession(db.Model):
     """Model for tracking user question-answering sessions"""
     __tablename__ = 'query_sessions'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    corpus_id = db.Column(UUID(as_uuid=True), db.ForeignKey('text_corpora.id'), nullable=False)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
+    corpus_id = db.Column(UUID(), db.ForeignKey('text_corpora.id'), nullable=False)
     session_name = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -136,8 +172,8 @@ class Query(db.Model):
     """Model for individual questions and RAG responses"""
     __tablename__ = 'queries'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = db.Column(UUID(as_uuid=True), db.ForeignKey('query_sessions.id'), nullable=False)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
+    session_id = db.Column(UUID(), db.ForeignKey('query_sessions.id'), nullable=False)
 
     # Question and response
     question = db.Column(db.Text, nullable=False)
@@ -169,7 +205,7 @@ class ExtractionPrompt(db.Model):
     """Model for storing and managing LLM extraction prompts"""
     __tablename__ = 'extraction_prompts'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.String(255), nullable=False)
     prompt_text = db.Column(db.Text, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
@@ -185,10 +221,10 @@ class OcrPage(db.Model):
     """Model for storing OCR results per single-page PDF (e.g., 001.pdf, 002.pdf)"""
     __tablename__ = 'ocr_pages'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
 
     # Batch grouping - multiple single-page PDFs uploaded together
-    batch_id = db.Column(UUID(as_uuid=True), nullable=False)
+    batch_id = db.Column(UUID(), nullable=False)
 
     # File identification
     filename = db.Column(db.String(255), nullable=False)  # e.g., "001.pdf"
@@ -226,21 +262,21 @@ class OcrPage(db.Model):
 
 # Association table for parent-child relationships
 parent_child = db.Table('parent_child',
-    db.Column('parent_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True),
-    db.Column('child_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True)
+    db.Column('parent_id', UUID(), db.ForeignKey('persons.id'), primary_key=True),
+    db.Column('child_id', UUID(), db.ForeignKey('persons.id'), primary_key=True)
 )
 
 # Association table for event participants
 event_participants = db.Table('event_participants',
-    db.Column('event_id', UUID(as_uuid=True), db.ForeignKey('events.id'), primary_key=True),
-    db.Column('person_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True),
+    db.Column('event_id', UUID(), db.ForeignKey('events.id'), primary_key=True),
+    db.Column('person_id', UUID(), db.ForeignKey('persons.id'), primary_key=True),
     db.Column('role', db.String(100))  # bride, groom, witness, etc.
 )
 
 # Association table for person-place connections
 person_places = db.Table('person_places',
-    db.Column('person_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True),
-    db.Column('place_id', UUID(as_uuid=True), db.ForeignKey('places.id'), primary_key=True),
+    db.Column('person_id', UUID(), db.ForeignKey('persons.id'), primary_key=True),
+    db.Column('place_id', UUID(), db.ForeignKey('places.id'), primary_key=True),
     db.Column('connection_type', db.String(100)),  # birth, death, residence, etc.
     db.Column('date', db.String(100)),
     db.Column('notes', db.Text)
@@ -251,20 +287,24 @@ class Person(db.Model):
     """Model for individuals in the family tree"""
     __tablename__ = 'persons'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
 
+    # External identifiers
+    gedcom_id = db.Column(db.String(50))  # GEDCOM ID like "I1", "I2"
+    
     # Name fields
     given_names = db.Column(db.String(255))
     surname = db.Column(db.String(255))
     tussenvoegsel = db.Column(db.String(50))  # Dutch particles (van, de, etc.)
+    sex = db.Column(db.String(1))  # M, F, or null
 
     # Life events
     birth_date = db.Column(db.String(100))  # Flexible date format
-    birth_place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    birth_place_id = db.Column(UUID(), db.ForeignKey('places.id'))
     baptism_date = db.Column(db.String(100))
-    baptism_place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    baptism_place_id = db.Column(UUID(), db.ForeignKey('places.id'))
     death_date = db.Column(db.String(100))
-    death_place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    death_place_id = db.Column(UUID(), db.ForeignKey('places.id'))
 
     # Additional information
     notes = db.Column(db.Text)
@@ -342,7 +382,7 @@ class Place(db.Model):
     """Model for geographic locations"""
     __tablename__ = 'places'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.String(255), nullable=False, unique=True)
     country = db.Column(db.String(100))
     region = db.Column(db.String(100))
@@ -366,11 +406,11 @@ class Event(db.Model):
     """Model for family events"""
     __tablename__ = 'events'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     title = db.Column(db.String(255), nullable=False)
     event_type = db.Column(db.String(100), nullable=False)  # birth, death, marriage, etc.
     date = db.Column(db.String(100))  # Flexible date format
-    place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    place_id = db.Column(UUID(), db.ForeignKey('places.id'))
     description = db.Column(db.Text)
 
     # Metadata
@@ -392,12 +432,12 @@ class Marriage(db.Model):
     """Model for marriage relationships"""
     __tablename__ = 'marriages'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    person1_id = db.Column(UUID(as_uuid=True), db.ForeignKey('persons.id'), nullable=False)
-    person2_id = db.Column(UUID(as_uuid=True), db.ForeignKey('persons.id'), nullable=False)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
+    person1_id = db.Column(UUID(), db.ForeignKey('persons.id'), nullable=False)
+    person2_id = db.Column(UUID(), db.ForeignKey('persons.id'), nullable=False)
 
     marriage_date = db.Column(db.String(100))
-    marriage_place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    marriage_place_id = db.Column(UUID(), db.ForeignKey('places.id'))
     divorce_date = db.Column(db.String(100))
     notes = db.Column(db.Text)
 
@@ -415,8 +455,8 @@ class Marriage(db.Model):
 
 # Association table for family children
 family_children = db.Table('family_children',
-    db.Column('family_id', UUID(as_uuid=True), db.ForeignKey('families.id'), primary_key=True),
-    db.Column('person_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True)
+    db.Column('family_id', UUID(), db.ForeignKey('families.id'), primary_key=True),
+    db.Column('person_id', UUID(), db.ForeignKey('persons.id'), primary_key=True)
 )
 
 
@@ -424,17 +464,17 @@ class Family(db.Model):
     """Model for family units (parents + children)"""
     __tablename__ = 'families'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     family_identifier = db.Column(db.String(100))  # Like "III.2" from source text
     generation_number = db.Column(db.Integer)
 
     # Parents
-    father_id = db.Column(UUID(as_uuid=True), db.ForeignKey('persons.id'))
-    mother_id = db.Column(UUID(as_uuid=True), db.ForeignKey('persons.id'))
+    father_id = db.Column(UUID(), db.ForeignKey('persons.id'))
+    mother_id = db.Column(UUID(), db.ForeignKey('persons.id'))
 
     # Marriage info
     marriage_date = db.Column(db.String(100))
-    marriage_place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    marriage_place_id = db.Column(UUID(), db.ForeignKey('places.id'))
 
     # Additional info
     notes = db.Column(db.Text)
@@ -459,12 +499,12 @@ class Occupation(db.Model):
     """Model for person occupations"""
     __tablename__ = 'occupations'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    person_id = db.Column(UUID(as_uuid=True), db.ForeignKey('persons.id'), nullable=False)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
+    person_id = db.Column(UUID(), db.ForeignKey('persons.id'), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     start_date = db.Column(db.String(100))
     end_date = db.Column(db.String(100))
-    place_id = db.Column(UUID(as_uuid=True), db.ForeignKey('places.id'))
+    place_id = db.Column(UUID(), db.ForeignKey('places.id'))
     notes = db.Column(db.Text)
 
     # Relationships
@@ -477,14 +517,14 @@ class Occupation(db.Model):
 
 # Association table for event sources
 event_sources = db.Table('event_sources',
-    db.Column('event_id', UUID(as_uuid=True), db.ForeignKey('events.id'), primary_key=True),
-    db.Column('source_id', UUID(as_uuid=True), db.ForeignKey('sources.id'), primary_key=True)
+    db.Column('event_id', UUID(), db.ForeignKey('events.id'), primary_key=True),
+    db.Column('source_id', UUID(), db.ForeignKey('sources.id'), primary_key=True)
 )
 
 # Association table for person sources
 person_sources = db.Table('person_sources',
-    db.Column('person_id', UUID(as_uuid=True), db.ForeignKey('persons.id'), primary_key=True),
-    db.Column('source_id', UUID(as_uuid=True), db.ForeignKey('sources.id'), primary_key=True)
+    db.Column('person_id', UUID(), db.ForeignKey('persons.id'), primary_key=True),
+    db.Column('source_id', UUID(), db.ForeignKey('sources.id'), primary_key=True)
 )
 
 
@@ -492,7 +532,7 @@ class Source(db.Model):
     """Model for genealogical sources"""
     __tablename__ = 'sources'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     title = db.Column(db.String(255), nullable=False)
     source_type = db.Column(db.String(100), nullable=False)  # book, document, website, etc.
     author = db.Column(db.String(255))
@@ -518,7 +558,7 @@ class JobFile(db.Model):
     """Model for storing uploaded files and job results"""
     __tablename__ = 'job_files'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     filename = db.Column(db.String(255), nullable=False)
     content_type = db.Column(db.String(100), nullable=False)
     file_size = db.Column(db.Integer, nullable=False)

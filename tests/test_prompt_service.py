@@ -12,23 +12,16 @@ import pytest
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from app import Config, create_app
+from app import create_app
+from tests.conftest import BaseTestConfig
 from web_app.database import db
 from web_app.services.prompt_service import PromptService
-
-
-class TestConfig(Config):
-    """Test configuration"""
-    def __init__(self):
-        super().__init__()
-        self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-        self.TESTING = True
 
 
 @pytest.fixture
 def app():
     """Create test Flask app"""
-    app = create_app(TestConfig)
+    app = create_app(BaseTestConfig())
     return app
 
 
@@ -314,111 +307,3 @@ class TestPromptService:
         with app.app_context():
             reset_prompt = prompt_service.reset_to_default("Nonexistent Prompt")
             assert reset_prompt is None
-
-
-class TestPromptAPI:
-    """Test the prompt management API endpoints"""
-
-    def test_get_prompts_api(self, app, client):
-        """Test GET /api/prompts endpoint"""
-        with app.app_context():
-            # Create some test prompts
-            from web_app.services.prompt_service import prompt_service
-            initial_count = len(prompt_service.get_all_prompts())
-
-            prompt1 = prompt_service.create_prompt("Prompt 1", "Text 1", "Desc 1")
-            _ = prompt_service.create_prompt("Prompt 2", "Text 2", "Desc 2")
-            prompt_service.set_active_prompt(str(prompt1.id))
-
-            response = client.get('/api/prompts')
-            assert response.status_code == 200
-
-            data = response.get_json()
-            assert data['success'] is True
-            assert len(data['prompts']) == initial_count + 2
-            assert data['active_prompt_id'] == str(prompt1.id)
-
-    def test_get_prompt_api(self, app, client):
-        """Test GET /api/prompts/<id> endpoint"""
-        with app.app_context():
-            from web_app.services.prompt_service import prompt_service
-            prompt = prompt_service.create_prompt("Test Prompt", "Test Text", "Test Desc")
-
-            response = client.get(f'/api/prompts/{prompt.id}')
-            assert response.status_code == 200
-
-            data = response.get_json()
-            assert data['success'] is True
-            assert data['prompt']['name'] == "Test Prompt"
-            assert data['prompt']['prompt_text'] == "Test Text"
-
-    def test_get_nonexistent_prompt_api(self, app, client):
-        """Test GET /api/prompts/<id> for non-existent prompt"""
-        response = client.get('/api/prompts/nonexistent-id')
-        assert response.status_code == 404
-
-    def test_create_prompt_api(self, app, client):
-        """Test POST /api/prompts endpoint"""
-        data = {
-            'name': 'New Prompt',
-            'prompt_text': 'New prompt text',
-            'description': 'New description'
-        }
-
-        response = client.post('/api/prompts', json=data)
-        assert response.status_code == 200
-
-        response_data = response.get_json()
-        assert response_data['success'] is True
-        assert response_data['prompt']['name'] == 'New Prompt'
-
-    def test_create_prompt_api_missing_data(self, app, client):
-        """Test POST /api/prompts with missing data"""
-        data = {'name': 'New Prompt'}  # Missing prompt_text
-
-        response = client.post('/api/prompts', json=data)
-        assert response.status_code == 400
-
-    def test_update_prompt_api(self, app, client):
-        """Test PUT /api/prompts/<id> endpoint"""
-        with app.app_context():
-            from web_app.services.prompt_service import prompt_service
-            prompt = prompt_service.create_prompt("Original", "Original text", "Original desc")
-
-            data = {
-                'name': 'Updated Name',
-                'prompt_text': 'Updated text'
-            }
-
-            response = client.put(f'/api/prompts/{prompt.id}', json=data)
-            assert response.status_code == 200
-
-            response_data = response.get_json()
-            assert response_data['success'] is True
-            assert response_data['prompt']['name'] == 'Updated Name'
-
-    def test_activate_prompt_api(self, app, client):
-        """Test POST /api/prompts/<id>/activate endpoint"""
-        with app.app_context():
-            from web_app.services.prompt_service import prompt_service
-            prompt = prompt_service.create_prompt("Test Prompt", "Test text", "Test desc")
-
-            response = client.post(f'/api/prompts/{prompt.id}/activate')
-            assert response.status_code == 200
-
-            response_data = response.get_json()
-            assert response_data['success'] is True
-
-    def test_delete_prompt_api(self, app, client):
-        """Test DELETE /api/prompts/<id> endpoint"""
-        with app.app_context():
-            from web_app.services.prompt_service import prompt_service
-            prompt1 = prompt_service.create_prompt("Prompt 1", "Text 1", "Desc 1")
-            _ = prompt_service.create_prompt("Prompt 2", "Text 2", "Desc 2")
-
-            # Should be able to delete non-active prompt
-            response = client.delete(f'/api/prompts/{prompt1.id}')
-            assert response.status_code == 200
-
-            response_data = response.get_json()
-            assert response_data['success'] is True

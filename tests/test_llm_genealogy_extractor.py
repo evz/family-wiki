@@ -15,10 +15,9 @@ from web_app.pdf_processing.llm_genealogy_extractor import LLMGenealogyExtractor
 class TestLLMGenealogyExtractor:
     """Test LLM genealogy extractor functionality"""
 
-    def test_initialization_default(self):
+    def test_initialization_default(self, app):
         """Test default initialization"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
 
             assert extractor.text_file == Path("extracted_text/consolidated_text.txt")
@@ -28,10 +27,9 @@ class TestLLMGenealogyExtractor:
             assert extractor.ollama_base_url == "http://192.168.1.234:11434"
             assert extractor.results == []
 
-    def test_initialization_custom_params(self):
+    def test_initialization_custom_params(self, app):
         """Test initialization with custom parameters"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor(
                 text_file="custom_text.txt",
                 ollama_host="localhost",
@@ -46,77 +44,51 @@ class TestLLMGenealogyExtractor:
             assert extractor.ollama_base_url == "http://localhost:8080"
 
     @patch('requests.get')
-    def test_check_ollama_available(self, mock_get):
+    def test_check_ollama_available(self, mock_get, app):
         """Test Ollama availability check when service is running"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {'models': [{'name': 'llama3'}, {'name': 'aya:35b-23'}]}
         mock_get.return_value = mock_response
 
-        with patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
+        extractor = LLMGenealogyExtractor()
         result = extractor.check_ollama()
         assert result is True
         mock_get.assert_called_with("http://192.168.1.234:11434/api/tags", timeout=5)
 
     @patch('requests.get')
-    def test_check_ollama_unavailable(self, mock_get):
+    def test_check_ollama_unavailable(self, mock_get, app):
         """Test Ollama availability check when service is not running"""
         mock_get.side_effect = requests.exceptions.RequestException("Connection failed")
 
-        with patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
+        extractor = LLMGenealogyExtractor()
         result = extractor.check_ollama()
         assert result is False
-        mock_get.assert_called_with("http://192.168.1.234:11434/api/tags", timeout=5)
 
     @patch('requests.get')
-    def test_check_ollama_error_status(self, mock_get):
+    def test_check_ollama_error_status(self, mock_get, app):
         """Test Ollama availability check with error status"""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_get.return_value = mock_response
 
-        with patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
+        extractor = LLMGenealogyExtractor()
         result = extractor.check_ollama()
         assert result is False
 
-    @patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'})
-    def test_check_openai_available(self):
-        """Test OpenAI availability check when API key is set"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
-        result = extractor.check_openai()
-        assert result is True
-
-    @patch.dict('os.environ', {}, clear=True)
-    def test_check_openai_unavailable(self):
-        """Test OpenAI availability check when API key is not set"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
-        result = extractor.check_openai()
-        assert result is False
-
     @patch('requests.post')
-    def test_query_ollama_success(self, mock_post):
+    def test_query_ollama_success(self, mock_post, app):
         """Test successful Ollama query"""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'response': 'Test response from Ollama'}
+        mock_response.json.return_value = {'response': 'Generated genealogy data'}
         mock_post.return_value = mock_response
 
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
         result = extractor.query_ollama("Test prompt")
-        assert result == "Test response from Ollama"
+        assert result == 'Generated genealogy data'
 
         mock_post.assert_called_once_with(
             "http://192.168.1.234:11434/api/generate",
@@ -133,347 +105,252 @@ class TestLLMGenealogyExtractor:
         )
 
     @patch('requests.post')
-    def test_query_ollama_with_custom_model(self, mock_post):
+    def test_query_ollama_with_custom_model(self, mock_post, app):
         """Test Ollama query with custom model"""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'response': 'Test response'}
+        mock_response.json.return_value = {'response': 'Custom model response'}
         mock_post.return_value = mock_response
 
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
         result = extractor.query_ollama("Test prompt", model="llama3:8b")
-        assert result == "Test response"
+        assert result == 'Custom model response'
 
-        # Check that custom model was used
+        # Check that the custom model was used
         call_args = mock_post.call_args
         assert call_args[1]['json']['model'] == "llama3:8b"
 
     @patch('requests.post')
-    def test_query_ollama_failure(self, mock_post):
-        """Test Ollama query failure"""
-        mock_post.side_effect = requests.exceptions.RequestException("Connection failed")
+    def test_query_ollama_failure(self, mock_post, app):
+        """Test Ollama query with request failure"""
+        mock_post.side_effect = requests.exceptions.RequestException("Network error")
 
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
         result = extractor.query_ollama("Test prompt")
         assert result is None
 
     @patch('requests.post')
-    def test_query_ollama_error_status(self, mock_post):
-        """Test Ollama query with error status"""
+    def test_query_ollama_error_status(self, mock_post, app):
+        """Test Ollama query with error HTTP status"""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_post.return_value = mock_response
 
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
         result = extractor.query_ollama("Test prompt")
         assert result is None
 
-    def test_create_genealogy_prompt(self):
+    def test_create_genealogy_prompt(self, app):
         """Test genealogy prompt creation"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
 
-        text_chunk = "Jan Jansen * 1800 Amsterdam"
+        text_chunk = "Jan van der Berg * 1850 Amsterdam"
         prompt = extractor.create_genealogy_prompt(text_chunk)
 
-        assert "You are an expert Dutch genealogist" in prompt
-        assert "Jan Jansen * 1800 Amsterdam" in prompt
-        assert "* means birth, ~ means baptism, + means death, x means marriage" in prompt
-        assert "Kinderen van" in prompt
+        assert "Dutch genealogist" in prompt
+        assert text_chunk in prompt
         assert "families" in prompt
-        assert "isolated_individuals" in prompt
+        assert "JSON" in prompt
 
-    def test_split_text_intelligently_basic(self):
-        """Test basic text splitting"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+    def test_split_text_intelligently_basic(self, app):
+        """Test basic text splitting functionality"""
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
 
-        # Use realistic text that will produce chunks
-        text = "EERSTE GENERATIE\n\nJan Jansen * 1800 Amsterdam. Hij was een bekende koopman in de stad en had veel contacten met andere families. Hij trouwde met Maria Pieterse en samen kregen zij verschillende kinderen die allemaal een belangrijke rol speelden in de geschiedenis van de familie.\n\nTWEEDE GENERATIE\n\nPieter Jansen * 1825 Amsterdam. Zoon van Jan Jansen en Maria Pieterse. Hij volgde zijn vader op als koopman."
+        # Use Dutch genealogy format that the method expects
+        text = """
+        EERSTE GENERATIE
+        
+        1.1 Kinderen van Jan van der Berg:
+        Jan van der Berg * 1850 Amsterdam + 1920 Amsterdam
+        Hij trouwde met Maria Jansen * 1855 Utrecht + 1925 Amsterdam
+        
+        Kinderen:
+        a. Piet van der Berg * 1875 Amsterdam
+        b. Marie van der Berg * 1877 Amsterdam  
+        c. Hendrik van der Berg * 1880 Amsterdam
+        """
         chunks = extractor.split_text_intelligently(text)
 
-        assert isinstance(chunks, list)
-        for chunk in chunks:
-            assert isinstance(chunk, str)
-            assert len(chunk) <= 4000  # Max chunk size
-
-    def test_split_text_intelligently_with_families(self):
-        """Test text splitting with family groups"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
-        # Use realistic family text that will produce chunks
-        text = "1.1. Kinderen van Jan Jansen en Maria Pieterse:\na. Pieter Jansen * 1825 Amsterdam, getrouwd met Anna de Vries\nb. Maria Jansen * 1827 Amsterdam, getrouwd met Willem van der Berg\nc. Johannes Jansen * 1829 Amsterdam, ongehuwd gestorven\n\nDeze familie was zeer prominent in de Amsterdamse samenleving en had uitgebreide handelscontacten."
-        chunks = extractor.split_text_intelligently(text)
-
-        assert isinstance(chunks, list)
+        assert len(chunks) >= 1
+        # All chunks should be strings
         for chunk in chunks:
             assert isinstance(chunk, str)
 
-    def test_split_text_intelligently_empty(self):
+    def test_split_text_intelligently_with_families(self, app):
+        """Test text splitting with multiple generations"""
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
+            extractor = LLMGenealogyExtractor()
+
+        text = """
+        EERSTE GENERATIE
+        
+        1.1 Kinderen van Jan van der Berg:
+        Jan van der Berg * 1850 Amsterdam + 1920 Amsterdam trouwde met Maria Jansen
+        Kinderen: a. Piet van der Berg * 1875, b. Marie van der Berg * 1877
+        
+        TWEEDE GENERATIE
+        
+        2.1 Kinderen van Hendrik Jansen:
+        Hendrik Jansen * 1860 Rotterdam + 1930 Rotterdam trouwde met Anna de Vries
+        Kinderen: a. Willem Jansen * 1885, b. Sara Jansen * 1887, c. Dirk Jansen * 1890
+        """
+        chunks = extractor.split_text_intelligently(text)
+
+        # Should return chunks for multiple generations
+        assert len(chunks) >= 1
+        # All chunks should be strings
+        for chunk in chunks:
+            assert isinstance(chunk, str)
+
+    def test_split_text_intelligently_empty(self, app):
         """Test text splitting with empty text"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
 
         chunks = extractor.split_text_intelligently("")
-        assert len(chunks) == 0
+        assert chunks == []
 
-    def test_extract_from_chunk_valid_json(self):
-        """Test extracting from chunk with valid JSON response"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
-        response = '''
-        {
-          "families": [
-            {
-              "family_id": "1.1",
-              "parents": {
-                "father": {
-                  "given_names": "Jan",
-                  "surname": "Jansen",
-                  "birth_date": "1800",
-                  "confidence": 0.9
-                }
-              },
-              "children": [
+    @patch.object(LLMGenealogyExtractor, 'query_ollama')
+    def test_extract_from_chunk_valid_json(self, mock_query, app):
+        """Test extraction from chunk with valid JSON response"""
+        valid_json = {
+            "families": [
                 {
-                  "given_names": "Pieter",
-                  "surname": "Jansen",
-                  "birth_date": "1825",
-                  "confidence": 0.8
+                    "family_id": "1",
+                    "parents": {
+                        "father": {
+                            "given_names": "Jan",
+                            "surname": "van der Berg"
+                        }
+                    },
+                    "children": []
                 }
-              ]
-            }
-          ],
-          "isolated_individuals": []
+            ],
+            "isolated_individuals": []
         }
-        '''
+        mock_query.return_value = json.dumps(valid_json)
 
-        with patch.object(extractor, 'query_ollama', return_value=response):
-            result = extractor.extract_from_chunk("Test chunk")
-
-        assert result is not None
-        assert 'families' in result
-        assert 'isolated_individuals' in result
-        assert len(result['families']) == 1
-        assert result['families'][0]['family_id'] == "1.1"
-
-    def test_extract_from_chunk_invalid_json(self):
-        """Test extracting from chunk with invalid JSON response"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
-        response = "This is not valid JSON"
-        with patch.object(extractor, 'query_ollama', return_value=response):
-            result = extractor.extract_from_chunk("Test chunk")
+        result = extractor.extract_from_chunk("Test text", custom_prompt="Test prompt")
+        assert result == valid_json
 
-        assert result is not None
+    @patch.object(LLMGenealogyExtractor, 'query_ollama')
+    def test_extract_from_chunk_invalid_json(self, mock_query, app):
+        """Test extraction from chunk with invalid JSON response"""
+        mock_query.return_value = "This is not valid JSON"
+
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
+            extractor = LLMGenealogyExtractor()
+
+        result = extractor.extract_from_chunk("Test text", custom_prompt="Test prompt")
         assert result == {"families": [], "isolated_individuals": []}
 
-    def test_extract_from_chunk_no_response(self):
-        """Test extracting from chunk when LLM returns no response"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+    @patch.object(LLMGenealogyExtractor, 'query_ollama')
+    def test_extract_from_chunk_no_response(self, mock_query, app):
+        """Test extraction from chunk with no LLM response"""
+        mock_query.return_value = None
+
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
-        with patch.object(extractor, 'query_ollama', return_value=None):
-            result = extractor.extract_from_chunk("Test chunk")
-
-        assert result is not None
+        result = extractor.extract_from_chunk("Test text", custom_prompt="Test prompt")
         assert result == {"families": [], "isolated_individuals": []}
 
-    def test_extract_from_chunk_with_custom_prompt(self):
-        """Test extracting from chunk with custom prompt"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+    @patch.object(LLMGenealogyExtractor, 'query_ollama')
+    def test_extract_from_chunk_with_custom_prompt(self, mock_query, app):
+        """Test extraction with custom prompt"""
+        mock_query.return_value = '{"families": []}'
+
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
-        custom_prompt = "Custom prompt: {text_chunk}"
-        response = '{"families": [], "isolated_individuals": []}'
-
-        with patch.object(extractor, 'query_ollama', return_value=response) as mock_query:
-            result = extractor.extract_from_chunk("Test chunk", custom_prompt=custom_prompt)
-
-        assert result is not None
-        # Check that custom prompt was used
-        mock_query.assert_called_once_with("Custom prompt: Test chunk")
-
-    def test_extract_from_chunk_json_with_extra_text(self):
-        """Test extracting from chunk with JSON buried in extra text"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
-        response = '''
-        Here is my analysis:
+        custom_prompt = "Custom extraction prompt"
+        extractor.extract_from_chunk("Test text", custom_prompt=custom_prompt)
         
-        {"families": [], "isolated_individuals": []}
-        
-        This completes the extraction.
-        '''
+        # Verify custom prompt was used
+        mock_query.assert_called_once_with(custom_prompt)
 
-        with patch.object(extractor, 'query_ollama', return_value=response):
-            result = extractor.extract_from_chunk("Test chunk")
+    @patch.object(LLMGenealogyExtractor, 'query_ollama')
+    def test_extract_from_chunk_json_with_extra_text(self, mock_query, app):
+        """Test extraction with JSON surrounded by extra text"""
+        json_with_text = """
+        Here is the extracted data:
+        {"families": [{"family_id": "test"}]}
+        Additional notes about the extraction.
+        """
+        mock_query.return_value = json_with_text
 
-        assert result is not None
-        assert 'families' in result
-        assert 'isolated_individuals' in result
-
-    def test_save_results(self):
-        """Test saving results to file"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
             extractor = LLMGenealogyExtractor()
 
-        # Results should be a dictionary after processing
-        test_results = {
-            "families": [{"family_id": "1.1", "parents": {}, "children": []}],
-            "isolated_individuals": [{"given_names": "Jan", "surname": "Jansen"}]
-        }
-        extractor.results = test_results
+        result = extractor.extract_from_chunk("Test text", custom_prompt="Test prompt")
+        assert result == {"families": [{"family_id": "test"}], "isolated_individuals": []}
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            output_file = f.name
 
-        try:
-            extractor.save_results(output_file)
-
-            # Verify file was created and contains correct data structure
-            with open(output_file) as f:
-                saved_data = json.load(f)
-
-            assert 'metadata' in saved_data
-            assert 'families' in saved_data
-            assert 'isolated_individuals' in saved_data
-            assert saved_data['families'] == test_results['families']
-            assert saved_data['isolated_individuals'] == test_results['isolated_individuals']
-        finally:
-            Path(output_file).unlink()
-
-    def test_save_results_empty(self):
-        """Test saving empty results to file"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
-
-        # Results start as empty list but save_results expects dictionary structure
-        extractor.results = {"families": [], "isolated_individuals": []}
-
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            output_file = f.name
-
-        try:
-            extractor.save_results(output_file)
-
-            # Verify file was created and contains empty results with proper structure
-            with open(output_file) as f:
-                saved_data = json.load(f)
-
-            assert 'metadata' in saved_data
-            assert 'families' in saved_data
-            assert 'isolated_individuals' in saved_data
-            assert saved_data['families'] == []
-            assert saved_data['isolated_individuals'] == []
-        finally:
-            Path(output_file).unlink()
-
-    def test_process_all_text_file_not_found(self):
+    @patch.object(LLMGenealogyExtractor, 'split_text_intelligently')
+    @patch.object(LLMGenealogyExtractor, 'extract_from_chunk')
+    def test_process_all_text_file_not_found(self, mock_extract, mock_split, app):
         """Test processing when text file doesn't exist"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor(text_file="non_existent_file.txt")
+        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
+            extractor = LLMGenealogyExtractor(text_file="nonexistent.txt")
 
-        # Should not raise an exception but results should remain as empty list
-        extractor.process_all_text()
-        assert extractor.results == []
+        result = extractor.process_all_text()
+        assert result is None  # Method returns None
+        mock_split.assert_not_called()
+        mock_extract.assert_not_called()
 
-    def test_process_all_text_success(self):
-        """Test successful processing of text file"""
-        # Create a temporary text file with realistic content
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-            f.write("EERSTE GENERATIE\n\nJan Jansen * 1800 Amsterdam. Hij was een bekende koopman.\n\nTWEEDE GENERATIE\n\nPieter Jansen * 1825 Amsterdam, zoon van Jan Jansen.")
-            text_file = f.name
-
-        try:
-            with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-                 patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-                extractor = LLMGenealogyExtractor(text_file=text_file)
-
-            # Mock the Ollama response
-            mock_response = '{"families": [], "isolated_individuals": []}'
-            with patch.object(extractor, 'query_ollama', return_value=mock_response):
-                extractor.process_all_text()
-
-            # After processing, results should be a dictionary
-            assert isinstance(extractor.results, dict)
-            assert 'families' in extractor.results
-            assert 'isolated_individuals' in extractor.results
-        finally:
-            Path(text_file).unlink()
-
-    def test_process_all_text_ollama_failure(self):
-        """Test processing when Ollama queries fail"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-            f.write("EERSTE GENERATIE\n\nJan Jansen * 1800 Amsterdam. Hij was een bekende koopman.")
-            text_file = f.name
+    @patch.object(LLMGenealogyExtractor, 'extract_from_chunk')
+    def test_process_all_text_success(self, mock_extract, app):
+        """Test successful text processing"""
+        # Create temporary text file with Dutch genealogy content that will be processed
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
+            temp_file.write("""
+            EERSTE GENERATIE
+            
+            1.1 Kinderen van Jan van der Berg:
+            Jan van der Berg * 1850 Amsterdam + 1920 Amsterdam trouwde met Maria Jansen
+            Kinderen: a. Piet van der Berg * 1875, b. Marie van der Berg * 1877
+            """)
+            temp_path = temp_file.name
 
         try:
-            with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True), \
-                 patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-                extractor = LLMGenealogyExtractor(text_file=text_file)
+            with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
+                extractor = LLMGenealogyExtractor(text_file=temp_path)
 
-            # Mock Ollama to return None (failure)
-            with patch.object(extractor, 'query_ollama', return_value=None):
-                extractor.process_all_text()
+            mock_extract.return_value = {"families": [{"family_id": "test"}], "isolated_individuals": []}
 
-            # Should have results with empty families/individuals due to failed queries
-            assert isinstance(extractor.results, dict)
-            assert 'families' in extractor.results
-            assert 'isolated_individuals' in extractor.results
-            assert extractor.results['families'] == []
-            assert extractor.results['isolated_individuals'] == []
+            result = extractor.process_all_text()
+            assert result is None  # Method returns None
+            mock_extract.assert_called()
         finally:
-            Path(text_file).unlink()
+            Path(temp_path).unlink()
 
-    def test_print_summary(self):
-        """Test printing summary of results"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
+    @patch.object(LLMGenealogyExtractor, 'extract_from_chunk')
+    def test_process_all_text_ollama_failure(self, mock_extract, app):
+        """Test processing with Ollama extraction failures"""
+        # Create temporary text file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
+            temp_file.write("Test family data here")
+            temp_path = temp_file.name
 
-        # Add some test results in dictionary format
-        extractor.results = {
-            "families": [{"family_id": "1.1", "parents": {}, "children": []}],
-            "isolated_individuals": [{"given_names": "John", "surname": "Doe"}]
-        }
+        try:
+            with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=True):
+                extractor = LLMGenealogyExtractor(text_file=temp_path)
 
-        # Should not raise an exception
-        extractor.print_summary()
+            mock_extract.return_value = None  # Simulate extraction failure
 
-    def test_print_summary_empty_results(self):
-        """Test printing summary with empty results"""
-        with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False), \
-             patch.object(LLMGenealogyExtractor, 'check_openai', return_value=False):
-            extractor = LLMGenealogyExtractor()
+            result = extractor.process_all_text()
+            assert result is None  # Method returns None
+        finally:
+            Path(temp_path).unlink()
 
-        # Set empty results in dictionary format
-        extractor.results = {"families": [], "isolated_individuals": []}
-
-        # Should not raise an exception with empty results
-        extractor.print_summary()

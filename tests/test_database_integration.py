@@ -13,23 +13,22 @@ import pytest
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from app import Config, create_app
+from tests.conftest import BaseTestConfig
 from web_app.database import db, init_db
 from web_app.database.models import ExtractionPrompt, Person, Place, SourceText, TextCorpus
 from web_app.services.prompt_service import prompt_service
 
 
-class TestConfig(Config):
-    """Test configuration"""
+class DatabaseTestConfig(BaseTestConfig):
+    """Test configuration for database tests"""
     def __init__(self):
         super().__init__()
-        self.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-        self.TESTING = True
 
 
 @pytest.fixture
 def app():
     """Create test Flask app"""
-    app = create_app(TestConfig)
+    app = create_app(DatabaseTestConfig())
     return app
 
 
@@ -53,15 +52,18 @@ class TestDatabaseInitialization:
 
     def test_database_configuration_from_environment(self):
         """Test that database URL is configurable via environment"""
-        with patch.dict(os.environ, {'DATABASE_URL': 'postgresql://test:test@localhost/test'}):
+        env_vars = {
+            'SECRET_KEY': 'test-secret',
+            'DATABASE_URL': 'postgresql://test:test@localhost/test',
+            'CELERY_BROKER_URL': 'redis://localhost:6379/0',
+            'CELERY_RESULT_BACKEND': 'redis://localhost:6379/1',
+            'OLLAMA_HOST': 'localhost',
+            'OLLAMA_PORT': '11434',
+            'OLLAMA_MODEL': 'test-model'
+        }
+        with patch.dict(os.environ, env_vars):
             config = Config()
-            assert config.SQLALCHEMY_DATABASE_URI == 'postgresql://test:test@localhost/test'
-
-    def test_database_configuration_default(self):
-        """Test default database configuration"""
-        config = Config()
-        # Should default to SQLite if no DATABASE_URL is set
-        assert 'sqlite:///' in config.SQLALCHEMY_DATABASE_URI
+            assert config.sqlalchemy_database_uri == 'postgresql://test:test@localhost/test'
 
 
 class TestBusinessLogicConstraints:

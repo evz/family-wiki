@@ -7,19 +7,14 @@ import re
 from .dutch_utils import DutchDateParser, DutchNameParser
 
 
-# Temporarily disabled - needs refactor to use SQLAlchemy models
-# from .models import Family, Person
-
-
 class GEDCOMParser:
-    """Parse GEDCOM files into structured genealogy data"""
+    """Parse GEDCOM files into structured data dictionaries"""
 
     def __init__(self):
-        self.individuals = {}
-        self.families = {}
-        self.places = {}
-        self.events = {}
-        self.sources = {}
+        """Initialize parser"""
+        # Raw GEDCOM data storage
+        self.raw_person_data = {}
+        self.raw_family_data = {}
 
     def parse_file(self, file_path: str) -> dict:
         """Parse a GEDCOM file and return structured data"""
@@ -28,15 +23,13 @@ class GEDCOMParser:
 
         records = self._split_into_records(lines)
 
+        # Parse all records and collect data
         for record in records:
-            self._parse_record(record)
+            self._parse_record_first_pass(record)
 
         return {
-            'individuals': self.individuals,
-            'families': self.families,
-            'places': self.places,
-            'events': self.events,
-            'sources': self.sources
+            'persons': self.raw_person_data,
+            'families': self.raw_family_data
         }
 
     def _split_into_records(self, lines: list[str]) -> list[list[str]]:
@@ -67,29 +60,31 @@ class GEDCOMParser:
         match = re.match(r'^(\d+)', line)
         return int(match.group(1)) if match else 0
 
-    def _parse_record(self, record: list[str]) -> None:
-        """Parse a single GEDCOM record"""
+    def _parse_record_first_pass(self, record: list[str]) -> None:
+        """First pass: collect raw GEDCOM data"""
         if not record:
             return
 
         header = record[0]
 
         if '@' in header and 'INDI' in header:
-            self._parse_individual_record(record)
+            self._collect_individual_data(record)
         elif '@' in header and 'FAM' in header:
-            self._parse_family_record(record)
-        elif '@' in header and 'SOUR' in header:
-            self._parse_source_record(record)
+            self._collect_family_data(record)
 
-    def _parse_individual_record(self, record: list[str]) -> None:
-        """Parse an individual (INDI) record"""
+    def _collect_individual_data(self, record: list[str]) -> None:
+        """Collect raw individual data for first pass"""
         header = record[0]
         person_id = self._extract_id(header)
 
         if not person_id:
             return
 
-        person = Person(id=person_id)
+        person_data = {
+            'gedcom_id': person_id,
+            'notes': '',
+            'occupations': []
+        }
 
         i = 1
         while i < len(record):
@@ -101,63 +96,72 @@ class GEDCOMParser:
             if level == 1:
                 if tag == 'NAME':
                     given_names, tussenvoegsel, surname = DutchNameParser.parse_full_name(value)
-                    person.given_names = given_names
-                    person.tussenvoegsel = tussenvoegsel
-                    person.surname = surname
+                    person_data['given_names'] = given_names
+                    person_data['tussenvoegsel'] = tussenvoegsel
+                    person_data['surname'] = surname
                 elif tag == 'SEX':
-                    person.sex = value
+                    person_data['sex'] = value
                 elif tag in ['BIRT', 'BAPM', 'DEAT']:
                     event_data = self._parse_event_subrecord(record, i)
                     if tag == 'BIRT':
-                        person.birth_date = event_data.get('date', '')
-                        person.birth_place = event_data.get('place', '')
+                        person_data['birth_date'] = event_data.get('date', '')
+                        person_data['birth_place'] = event_data.get('place', '')
                     elif tag == 'BAPM':
-                        person.baptism_date = event_data.get('date', '')
-                        person.baptism_place = event_data.get('place', '')
+                        person_data['baptism_date'] = event_data.get('date', '')
+                        person_data['baptism_place'] = event_data.get('place', '')
                     elif tag == 'DEAT':
-                        person.death_date = event_data.get('date', '')
-                        person.death_place = event_data.get('place', '')
+                        person_data['death_date'] = event_data.get('date', '')
+                        person_data['death_place'] = event_data.get('place', '')
                 elif tag == 'OCCU':
-                    person.occupations.append(value)
+                    person_data['occupations'].append(value)
                 elif tag == 'NOTE':
-                    person.notes += value + " "
+                    person_data['notes'] += value + " "
 
             i += 1
 
-        self.individuals[person_id] = person
+        self.raw_person_data[person_id] = person_data
 
-    def _parse_family_record(self, record: list[str]) -> None:
-        """Parse a family (FAM) record"""
+    def _collect_family_data(self, record: list[str]) -> None:
+        """Collect raw family data for first pass"""
         header = record[0]
         family_id = self._extract_id(header)
 
         if not family_id:
             return
 
-        family = Family(id=family_id)
+        family_data = {
+            'gedcom_id': family_id,
+            'husband_gedcom_id': None,
+            'wife_gedcom_id': None,
+            'children_gedcom_ids': [],
+            'marriage_date': '',
+            'marriage_place': ''
+        }
 
-        for line in record[1:]:
+        i = 1
+        while i < len(record):
+            line = record[i]
             level = self._get_level(line)
             tag = self._get_tag(line)
             value = self._get_value(line)
 
             if level == 1:
                 if tag == 'HUSB':
-                    family.husband_id = self._extract_id(value)
+                    family_data['husband_gedcom_id'] = self._extract_id(value)
                 elif tag == 'WIFE':
-                    family.wife_id = self._extract_id(value)
+                    family_data['wife_gedcom_id'] = self._extract_id(value)
                 elif tag == 'CHIL':
-                    family.children_ids.append(self._extract_id(value))
+                    family_data['children_gedcom_ids'].append(self._extract_id(value))
                 elif tag == 'MARR':
-                    # Marriage event - would need to parse sub-records
-                    pass
+                    # Parse marriage event sub-records
+                    event_data = self._parse_event_subrecord(record, i)
+                    family_data['marriage_date'] = event_data.get('date', '')
+                    family_data['marriage_place'] = event_data.get('place', '')
 
-        self.families[family_id] = family
+            i += 1
 
-    def _parse_source_record(self, record: list[str]) -> None:
-        """Parse a source (SOUR) record"""
-        # Implementation for source records
-        pass
+        self.raw_family_data[family_id] = family_data
+
 
     def _parse_event_subrecord(self, record: list[str], start_index: int) -> dict:
         """Parse event sub-records (DATE, PLAC, etc.)"""
@@ -200,20 +204,10 @@ class GEDCOMParser:
         parts = line.split(None, 2)
         return parts[2] if len(parts) > 2 else ''
 
-    def get_person_by_id(self, person_id: str):  # -> Person | None:
-        """Get a person by their ID"""
-        return self.individuals.get(person_id)
+    def get_person_data(self, gedcom_id: str) -> dict | None:
+        """Get parsed person data by GEDCOM ID"""
+        return self.raw_person_data.get(gedcom_id)
 
-    def get_family_by_id(self, family_id: str):  # -> Family | None:
-        """Get a family by their ID"""
-        return self.families.get(family_id)
-
-    def get_person_families(self, person_id: str):  # -> list[Family]:
-        """Get all families a person belongs to"""
-        families = []
-        for family in self.families.values():
-            if (family.husband_id == person_id or
-                family.wife_id == person_id or
-                person_id in family.children_ids):
-                families.append(family)
-        return families
+    def get_family_data(self, gedcom_id: str) -> dict | None:
+        """Get parsed family data by GEDCOM ID"""
+        return self.raw_family_data.get(gedcom_id)
