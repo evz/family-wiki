@@ -10,6 +10,8 @@ from pathlib import Path
 
 import requests
 
+from web_app.services.prompt_service import PromptService
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,6 +28,9 @@ class LLMGenealogyExtractor:
         self.ollama_port = ollama_port
         self.ollama_model = ollama_model
         self.ollama_base_url = f"http://{ollama_host}:{ollama_port}"
+        
+        # Prompt service for getting active prompt from database
+        self.prompt_service = PromptService()
 
         # Try to detect available LLM services
         self.check_ollama()
@@ -68,114 +73,20 @@ class LLMGenealogyExtractor:
         return None
 
     def create_genealogy_prompt(self, text_chunk: str) -> str:
-        """Create a specialized prompt for genealogical data extraction with family linking"""
-        return f"""You are an expert Dutch genealogist. Analyze this historical family record text and extract structured family information with proper relationships.
-
-IMPORTANT CONTEXT:
-- This is Dutch genealogical text from a family book organized by generations
-- * means birth, ~ means baptism, + means death, x means marriage
-- Letters like "a.", "b.", "c." indicate siblings in birth order
-- Patterns like "1.1" or "III.2" indicate family groups
-- Look for phrases like "Kinderen van" (children of) to identify families
-- Dutch place names and dates in DD.MM.YYYY format are common
-- Names often include "van/de" indicating place of origin
-
-TEXT TO ANALYZE:
-{text_chunk}
-
-Extract family groups and relationships. Return ONLY valid JSON in this exact format:
-{{
-  "families": [
-    {{
-      "family_id": "unique identifier like 'III.2' or descriptive name",
-      "parents": {{
-        "father": {{
-          "given_names": "first and middle names",
-          "surname": "family name including van/de prefixes",
-          "birth_date": "date if mentioned with *",
-          "birth_place": "place if mentioned with *",
-          "baptism_date": "date if mentioned with ~",
-          "baptism_place": "place if mentioned with ~",
-          "death_date": "date if mentioned with +",
-          "death_place": "place if mentioned with +",
-          "marriage_date": "date if mentioned with x",
-          "marriage_place": "place if mentioned with x",
-          "notes": "additional information",
-          "confidence": 0.85
-        }},
-        "mother": {{
-          "given_names": "first and middle names",
-          "surname": "maiden name including van/de prefixes",
-          "birth_date": "date if mentioned with *",
-          "birth_place": "place if mentioned with *",
-          "baptism_date": "date if mentioned with ~",
-          "baptism_place": "place if mentioned with ~",
-          "death_date": "date if mentioned with +",
-          "death_place": "place if mentioned with +",
-          "marriage_date": "date if mentioned with x",
-          "marriage_place": "place if mentioned with x",
-          "notes": "additional information",
-          "confidence": 0.85
-        }}
-      }},
-      "children": [
-        {{
-          "given_names": "first and middle names",
-          "surname": "inherited family name",
-          "birth_date": "date if mentioned with *",
-          "birth_place": "place if mentioned with *",
-          "baptism_date": "date if mentioned with ~",
-          "baptism_place": "place if mentioned with ~",
-          "death_date": "date if mentioned with +",
-          "death_place": "place if mentioned with +",
-          "marriage_date": "date if mentioned with x",
-          "marriage_place": "place if mentioned with x",
-          "spouse_name": "spouse name if mentioned",
-          "sibling_order": "a, b, c etc. if present",
-          "notes": "additional information including any children mentioned",
-          "confidence": 0.85
-        }}
-      ],
-      "generation_number": "1, 2, 3 etc. if mentioned",
-      "family_notes": "any notes about the family as a whole"
-    }}
-  ],
-  "isolated_individuals": [
-    {{
-      "given_names": "first and middle names",
-      "surname": "family name including van/de prefixes",
-      "birth_date": "date if mentioned with *",
-      "birth_place": "place if mentioned with *",
-      "baptism_date": "date if mentioned with ~",
-      "baptism_place": "place if mentioned with ~",
-      "death_date": "date if mentioned with +",
-      "death_place": "place if mentioned with +",
-      "marriage_date": "date if mentioned with x",
-      "marriage_place": "place if mentioned with x",
-      "spouse_name": "spouse name if mentioned",
-      "relationship_context": "how this person relates to families mentioned",
-      "notes": "additional information",
-      "confidence": 0.85
-    }}
-  ]
-}}
-
-EXTRACTION RULES:
-1. PRIORITIZE FAMILY GROUPS - Look for "Kinderen van [parent names]" patterns
-2. LINK GENERATIONS - If text mentions "eerste/tweede generatie" note the generation number
-3. CONNECT RELATIONSHIPS - When someone is mentioned as parent in one section and child in another, note this
-4. PRESERVE CONTEXT - Include family group identifiers and generation markers
-5. USE CONFIDENCE SCORING:
-   - 0.95+ for explicit family statements like "Kinderen van Jan en Maria:"
-   - 0.85+ for clear relationships inferred from context
-   - 0.7+ for probable relationships based on names/dates/places
-6. Leave fields empty ("") if information is not clearly stated
-7. Include Dutch names and places exactly as written
-8. If no clear families are found, return empty families array []
-
-Focus on creating a family tree structure rather than isolated individuals.
-
-JSON RESPONSE:"""
+        """Create a specialized prompt for genealogical data extraction using active database prompt"""
+        try:
+            active_prompt = self.prompt_service.get_active_prompt()
+            if active_prompt:
+                # Replace the {text_chunk} placeholder with actual text
+                return active_prompt.prompt_text.replace("{text_chunk}", text_chunk)
+            else:
+                logger.warning("No active prompt found, ensure default prompts are loaded")
+                # Fallback to a basic prompt if no active prompt exists
+                return f"Extract genealogical data from this Dutch text: {text_chunk}. Return JSON with families and isolated_individuals arrays."
+        except Exception as e:
+            logger.error(f"Failed to get active prompt from database: {e}")
+            # Fallback to basic prompt on error
+            return f"Extract genealogical data from this Dutch text: {text_chunk}. Return JSON with families and isolated_individuals arrays."
 
     def extract_from_chunk(self, text_chunk: str, custom_prompt: str = None) -> dict:
         """Extract genealogical data from a text chunk using LLM"""
