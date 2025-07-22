@@ -1,107 +1,192 @@
 """
-Tests for service utilities
+Tests for service utility functions
 """
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from web_app.shared.service_utils import execute_with_progress
+import pytest
+
+from web_app.services.exceptions import ConflictError, NotFoundError, ServiceError, ValidationError
+from web_app.services.service_utils import handle_service_errors
 
 
-class TestServiceUtils:
-    """Test service utility functions"""
+class TestHandleServiceErrors:
+    """Test service error handling decorator"""
 
-    def test_execute_with_progress_success(self):
-        """Test successful operation with progress tracking"""
-        mock_operation = Mock(return_value={"data": "test"})
-        mock_progress = Mock()
+    def test_successful_function_execution(self, app):
+        """Test decorator with successful function execution"""
+        @handle_service_errors()
+        def test_function():
+            return "success"
 
-        result = execute_with_progress(
-            "test operation",
-            mock_operation,
-            mock_progress,
-            arg1="value1",
-            arg2="value2"
-        )
+        with app.test_request_context():
+            result = test_function()
+            assert result == "success"
 
-        assert result['success'] is True
-        assert result['message'] == "test operation completed"
-        assert result['results'] == {"data": "test"}
+    def test_successful_function_with_success_message(self, app):
+        """Test decorator with success message"""
+        @handle_service_errors(success_message="Operation completed")
+        def test_function():
+            return "success"
 
-        # Verify operation was called with correct arguments
-        mock_operation.assert_called_once_with(arg1="value1", arg2="value2")
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash:
+                result = test_function()
+                assert result == "success"
+                mock_flash.assert_called_once_with("Operation completed", "success")
 
-        # Verify progress callbacks were called
-        assert mock_progress.call_count == 2
-        mock_progress.assert_any_call({"status": "starting", "message": "Initializing test operation"})
-        mock_progress.assert_any_call({"status": "completed", "results": {"data": "test"}})
+    def test_validation_error_handling(self, app):
+        """Test ValidationError handling"""
+        @handle_service_errors()
+        def test_function():
+            raise ValidationError("Invalid input")
 
-    def test_execute_with_progress_no_callback(self):
-        """Test operation without progress callback"""
-        mock_operation = Mock(return_value={"data": "test"})
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/main"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function()
+                
+                assert result == "redirect_response"
+                mock_flash.assert_called_once_with("Validation error: Invalid input", "error")
+                mock_url_for.assert_called_once_with("main.index")
+                mock_redirect.assert_called_once_with("/main")
 
-        result = execute_with_progress(
-            "test operation",
-            mock_operation,
-            None,  # No progress callback
-            arg1="value1"
-        )
+    def test_not_found_error_handling(self, app):
+        """Test NotFoundError handling"""
+        @handle_service_errors()
+        def test_function():
+            raise NotFoundError("Resource not found")
 
-        assert result['success'] is True
-        assert result['message'] == "test operation completed"
-        assert result['results'] == {"data": "test"}
-        mock_operation.assert_called_once_with(arg1="value1")
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/main"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function()
+                
+                assert result == "redirect_response"
+                mock_flash.assert_called_once_with("Not found: Resource not found", "error")
+                mock_url_for.assert_called_once_with("main.index")
 
-    def test_execute_with_progress_failure(self):
-        """Test operation failure with error handling"""
-        mock_operation = Mock(side_effect=Exception("Operation failed"))
-        mock_progress = Mock()
+    def test_conflict_error_handling(self, app):
+        """Test ConflictError handling"""
+        @handle_service_errors()
+        def test_function():
+            raise ConflictError("Resource conflict")
 
-        result = execute_with_progress(
-            "test operation",
-            mock_operation,
-            mock_progress
-        )
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/main"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function()
+                
+                assert result == "redirect_response"
+                mock_flash.assert_called_once_with("Conflict: Resource conflict", "error")
 
-        assert result['success'] is False
-        assert "test operation failed: Operation failed" in result['error']
+    def test_generic_service_error_handling(self, app):
+        """Test generic ServiceError handling"""
+        @handle_service_errors()
+        def test_function():
+            raise ServiceError("Generic service error")
 
-        # Verify progress callbacks were called
-        assert mock_progress.call_count == 2
-        mock_progress.assert_any_call({"status": "starting", "message": "Initializing test operation"})
-        mock_progress.assert_any_call({"status": "failed", "error": "test operation failed: Operation failed"})
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/main"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function()
+                
+                assert result == "redirect_response"
+                mock_flash.assert_called_once_with("Error: Generic service error", "error")
 
-    def test_execute_with_progress_failure_no_callback(self):
-        """Test operation failure without progress callback"""
-        mock_operation = Mock(side_effect=ValueError("Invalid input"))
+    def test_unexpected_error_handling(self, app):
+        """Test unexpected exception handling"""
+        @handle_service_errors()
+        def test_function():
+            raise ValueError("Unexpected error")
 
-        result = execute_with_progress(
-            "test operation",
-            mock_operation,
-            None  # No progress callback
-        )
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/main"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function()
+                
+                assert result == "redirect_response"
+                mock_flash.assert_called_once_with("Unexpected error: Unexpected error", "error")
 
-        assert result['success'] is False
-        assert "test operation failed: Invalid input" in result['error']
-        mock_operation.assert_called_once_with()
+    def test_custom_redirect_endpoint(self, app):
+        """Test decorator with custom redirect endpoint"""
+        @handle_service_errors(redirect_endpoint='custom.endpoint')
+        def test_function():
+            raise ValidationError("Test error")
 
-    def test_execute_with_progress_complex_operation(self):
-        """Test with a more complex operation that returns various data types"""
-        def complex_operation(data_list, multiplier=1):
-            return [x * multiplier for x in data_list]
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/custom"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function()
+                
+                assert result == "redirect_response"
+                mock_url_for.assert_called_once_with("custom.endpoint")
 
-        mock_progress = Mock()
+    def test_decorator_preserves_function_metadata(self):
+        """Test that decorator preserves original function metadata"""
+        @handle_service_errors()
+        def test_function():
+            """Test function docstring"""
+            return "test"
 
-        result = execute_with_progress(
-            "list processing",
-            complex_operation,
-            mock_progress,
-            data_list=[1, 2, 3],
-            multiplier=2
-        )
+        assert test_function.__name__ == "test_function"
+        assert test_function.__doc__ == "Test function docstring"
 
-        assert result['success'] is True
-        assert result['results'] == [2, 4, 6]
+    def test_decorator_with_function_arguments(self, app):
+        """Test decorator works with function arguments"""
+        @handle_service_errors()
+        def test_function(arg1, arg2, kwarg1=None):
+            return f"{arg1}-{arg2}-{kwarg1}"
 
-        # Check progress was tracked
-        mock_progress.assert_any_call({"status": "starting", "message": "Initializing list processing"})
-        mock_progress.assert_any_call({"status": "completed", "results": [2, 4, 6]})
+        with app.test_request_context():
+            result = test_function("a", "b", kwarg1="c")
+            assert result == "a-b-c"
+
+    def test_decorator_with_function_that_raises_and_has_args(self, app):
+        """Test decorator error handling with function arguments"""
+        @handle_service_errors()
+        def test_function(arg1, arg2):
+            raise ValidationError(f"Error with {arg1} and {arg2}")
+
+        with app.test_request_context():
+            with patch('web_app.services.service_utils.flash') as mock_flash, \
+                 patch('web_app.services.service_utils.redirect') as mock_redirect, \
+                 patch('web_app.services.service_utils.url_for') as mock_url_for:
+                
+                mock_url_for.return_value = "/main"
+                mock_redirect.return_value = "redirect_response"
+                
+                result = test_function("test1", "test2")
+                
+                assert result == "redirect_response"
+                mock_flash.assert_called_once_with("Validation error: Error with test1 and test2", "error")

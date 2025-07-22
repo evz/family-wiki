@@ -4,7 +4,6 @@ Pure GEDCOM formatting without file I/O operations
 
 from datetime import datetime
 
-
 from web_app.database.models import Family, Person
 
 

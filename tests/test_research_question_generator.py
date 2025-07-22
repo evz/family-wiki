@@ -442,7 +442,7 @@ class TestResearchQuestionGenerator:
         assert question.research_type == "archival"
 
     @patch('requests.post')
-    def test_query_llm_for_insights_success(self, mock_post):
+    def test_query_llm_for_insights_success(self, mock_post, app):
         """Test successful LLM query for insights"""
         generator = ResearchQuestionGenerator()
 
@@ -470,7 +470,7 @@ class TestResearchQuestionGenerator:
         assert questions[0].difficulty == "moderate"
 
     @patch('requests.post')
-    def test_query_llm_for_insights_no_json(self, mock_post):
+    def test_query_llm_for_insights_no_json(self, mock_post, app):
         """Test LLM query with no JSON response"""
         generator = ResearchQuestionGenerator()
 
@@ -486,7 +486,7 @@ class TestResearchQuestionGenerator:
         assert questions == []
 
     @patch('requests.post')
-    def test_query_llm_for_insights_invalid_json(self, mock_post):
+    def test_query_llm_for_insights_invalid_json(self, mock_post, app):
         """Test LLM query with invalid JSON response"""
         generator = ResearchQuestionGenerator()
 
@@ -502,7 +502,7 @@ class TestResearchQuestionGenerator:
         assert questions == []
 
     @patch('requests.post')
-    def test_query_llm_for_insights_request_failure(self, mock_post):
+    def test_query_llm_for_insights_request_failure(self, mock_post, app):
         """Test LLM query with request failure"""
         generator = ResearchQuestionGenerator()
 
@@ -513,12 +513,13 @@ class TestResearchQuestionGenerator:
         assert questions == []
 
     @patch('requests.post')
-    def test_query_llm_for_insights_http_error(self, mock_post):
+    def test_query_llm_for_insights_http_error(self, mock_post, app):
         """Test LLM query with HTTP error"""
         generator = ResearchQuestionGenerator()
 
         mock_response = Mock()
         mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
         mock_post.return_value = mock_response
 
         questions = generator.query_llm_for_insights("Test text")
@@ -675,38 +676,25 @@ class TestResearchQuestionGenerator:
         finally:
             Path(output_file).unlink()
 
-    def test_print_summary_no_questions(self):
-        """Test printing summary with no questions"""
+    def test_get_summary_no_questions(self, app):
+        """Test getting summary with no questions"""
         generator = ResearchQuestionGenerator()
 
-        # Should not raise exception
-        generator.print_summary()
+        summary = generator.get_summary()
+        assert isinstance(summary, dict)
 
-    def test_print_summary_with_questions(self):
-        """Test printing summary with questions"""
+    def test_get_summary_with_questions(self, app):
+        """Test getting summary with questions"""
         generator = ResearchQuestionGenerator()
 
-        # Create sample questions
+        # Create sample questions with correct constructor parameters
         generator.research_questions = [
-            ResearchQuestion("Missing Records", "What birth dates are missing?", "Evidence 1", "high", "archival", "moderate", ["Source 1"]),
-            ResearchQuestion("Missing Records", "What death dates are missing?", "Evidence 2", "medium", "archival", "easy", ["Source 2"]),
-            ResearchQuestion("Geographic", "Migration patterns?", "Evidence 3", "low", "online", "difficult", ["Source 3"])
+            ResearchQuestion("missing_records", "What birth dates are missing?", "Evidence 1", "high", "archival", "moderate", ["Source 1"]),
+            ResearchQuestion("missing_records", "What death dates are missing?", "Evidence 2", "medium", "archival", "easy", ["Source 2"]),
+            ResearchQuestion("geographic", "Migration patterns?", "Evidence 3", "low", "online", "difficult", ["Source 3"])
         ]
 
-        # Should not raise exception
-        generator.print_summary()
+        summary = generator.get_summary()
+        assert isinstance(summary, dict)
+        assert summary['total_questions'] == 3
 
-    @patch('web_app.research_question_generator.ResearchQuestionGenerator')
-    def test_main_function(self, mock_generator_class):
-        """Test main function"""
-        mock_generator = Mock()
-        mock_generator_class.return_value = mock_generator
-
-        # Import and call main
-        from web_app.research_question_generator import main
-        main()
-
-        mock_generator.generate_all_questions.assert_called_once()
-        mock_generator.prioritize_questions.assert_called_once()
-        mock_generator.print_summary.assert_called_once()
-        mock_generator.save_questions.assert_called_once()

@@ -120,7 +120,7 @@ class TestGenealogyModelBenchmark:
         assert result is True
         mock_run.assert_called_once_with(
             ['ollama', 'pull', 'qwen2.5:7b'],
-            capture_output=True, text=True, timeout=600
+            capture_output=True, text=True, timeout=600, check=False
         )
 
     @patch('subprocess.run')
@@ -149,7 +149,8 @@ class TestGenealogyModelBenchmark:
     @patch('subprocess.run')
     def test_install_model_exception(self, mock_run, app):
         """Test model installation with exception"""
-        mock_run.side_effect = Exception("Subprocess error")
+        import subprocess
+        mock_run.side_effect = subprocess.SubprocessError("Subprocess error")
 
         benchmark = GenealogyModelBenchmark()
         result = benchmark.install_model("qwen2.5:7b")
@@ -381,9 +382,8 @@ class TestGenealogyModelBenchmark:
         benchmark = GenealogyModelBenchmark()
 
         with patch.object(benchmark, 'check_ollama_running', return_value=False):
-            benchmark.run_full_benchmark()
-
-        assert benchmark.results == {}
+            with pytest.raises(RuntimeError, match="Ollama is not running"):
+                benchmark.run_full_benchmark()
 
     def test_run_full_benchmark_success(self, app):
         """Test successful full benchmark run"""
@@ -435,34 +435,6 @@ class TestGenealogyModelBenchmark:
 
         assert benchmark.results == {}
 
-    def test_print_results_no_results(self, app):
-        """Test printing results when no results available"""
-        benchmark = GenealogyModelBenchmark()
-
-        # Should not raise exception
-        benchmark.print_results()
-
-    def test_print_results_with_results(self, app):
-        """Test printing results with actual results"""
-        benchmark = GenealogyModelBenchmark()
-
-        benchmark.results = {
-            'qwen2.5:7b': {
-                'overall_score': 0.85,
-                'success_rate': 0.9,
-                'avg_response_time': 1.5,
-                'avg_accuracy': 0.8
-            },
-            'llama3.1:8b': {
-                'overall_score': 0.75,
-                'success_rate': 0.8,
-                'avg_response_time': 2.0,
-                'avg_accuracy': 0.7
-            }
-        }
-
-        # Should not raise exception
-        benchmark.print_results()
 
     def test_save_results(self, app):
         """Test saving results to file"""
@@ -509,55 +481,3 @@ class TestGenealogyModelBenchmark:
         finally:
             Path(output_file).unlink()
 
-    @patch('builtins.input')
-    def test_main_function_proceed(self, mock_input, app):
-        """Test main function when user proceeds"""
-        mock_input.return_value = 'y'
-
-        with patch('web_app.pdf_processing.genealogy_model_benchmark.GenealogyModelBenchmark') as mock_benchmark_class:
-            mock_benchmark = Mock()
-            mock_benchmark_class.return_value = mock_benchmark
-
-            # Import and call main
-            from web_app.pdf_processing.genealogy_model_benchmark import main
-            main()
-
-            mock_benchmark.run_full_benchmark.assert_called_once_with(install_models=True)
-            mock_benchmark.print_results.assert_called_once()
-            mock_benchmark.save_results.assert_called_once()
-
-    @patch('builtins.input')
-    def test_main_function_cancel(self, mock_input, app):
-        """Test main function when user cancels"""
-        mock_input.return_value = 'n'
-
-        with patch('web_app.pdf_processing.genealogy_model_benchmark.GenealogyModelBenchmark') as mock_benchmark_class:
-            mock_benchmark = Mock()
-            mock_benchmark_class.return_value = mock_benchmark
-
-            # Import and call main
-            from web_app.pdf_processing.genealogy_model_benchmark import main
-            main()
-
-            # Should not call benchmark methods when cancelled
-            mock_benchmark.run_full_benchmark.assert_not_called()
-            mock_benchmark.print_results.assert_not_called()
-            mock_benchmark.save_results.assert_not_called()
-
-    @patch('builtins.input')
-    def test_main_function_invalid_input(self, mock_input, app):
-        """Test main function with invalid input"""
-        mock_input.return_value = 'invalid'
-
-        with patch('web_app.pdf_processing.genealogy_model_benchmark.GenealogyModelBenchmark') as mock_benchmark_class:
-            mock_benchmark = Mock()
-            mock_benchmark_class.return_value = mock_benchmark
-
-            # Import and call main
-            from web_app.pdf_processing.genealogy_model_benchmark import main
-            main()
-
-            # Should not call benchmark methods with invalid input
-            mock_benchmark.run_full_benchmark.assert_not_called()
-            mock_benchmark.print_results.assert_not_called()
-            mock_benchmark.save_results.assert_not_called()

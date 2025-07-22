@@ -6,10 +6,9 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQL_UUID
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.types import CHAR, TypeDecorator
 
 from . import db
 
@@ -291,7 +290,7 @@ class Person(db.Model):
 
     # External identifiers
     gedcom_id = db.Column(db.String(50))  # GEDCOM ID like "I1", "I2"
-    
+
     # Name fields
     given_names = db.Column(db.String(255))
     surname = db.Column(db.String(255))

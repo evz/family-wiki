@@ -28,7 +28,7 @@ class LLMGenealogyExtractor:
         self.ollama_port = ollama_port
         self.ollama_model = ollama_model
         self.ollama_base_url = f"http://{ollama_host}:{ollama_port}"
-        
+
         # Prompt service for getting active prompt from database
         self.prompt_service = PromptService()
 

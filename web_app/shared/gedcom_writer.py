@@ -2,10 +2,9 @@
 GEDCOM writer for exporting genealogy data to GEDCOM format
 """
 
-from .gedcom_formatter import GEDCOMFileWriter, GEDCOMFormatter
-
-
 from web_app.database.models import Family, Person
+
+from .gedcom_formatter import GEDCOMFileWriter, GEDCOMFormatter
 
 
 class GEDCOMWriter:

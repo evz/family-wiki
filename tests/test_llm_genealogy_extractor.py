@@ -276,7 +276,7 @@ class TestLLMGenealogyExtractor:
 
         custom_prompt = "Custom extraction prompt"
         extractor.extract_from_chunk("Test text", custom_prompt=custom_prompt)
-        
+
         # Verify custom prompt was used
         mock_query.assert_called_once_with(custom_prompt)
 

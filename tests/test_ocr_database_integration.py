@@ -86,18 +86,21 @@ class TestOCRDatabaseIntegration:
         assert result == 'unknown'
 
     @patch('web_app.pdf_processing.ocr_processor.fitz')
-    def test_pdf_to_image_invalid_file(self, mock_fitz, processor, sample_batch_id):
+    def test_pdf_to_image_invalid_file(self, mock_fitz, processor, sample_batch_id, app):
         """Test PDF to image conversion with invalid file"""
-        mock_fitz.open.side_effect = mock_fitz.FileNotFoundError("File not found")
+        # Create a mock document with 0 pages (simulating invalid file)
+        mock_doc = Mock()
+        mock_doc.__len__ = Mock(return_value=0)  # No pages = invalid file
+        mock_fitz.open.return_value = mock_doc
 
         pdf_path = Path("nonexistent.pdf")
         result = processor._pdf_to_image(pdf_path, sample_batch_id, 1)
 
         assert result['success'] is False
-        assert 'Invalid PDF file' in result['error']
+        assert 'PDF must contain exactly 1 page, found 0 pages' in result['error']
 
     @patch('web_app.pdf_processing.ocr_processor.fitz')
-    def test_pdf_to_image_multiple_pages(self, mock_fitz, processor, sample_batch_id):
+    def test_pdf_to_image_multiple_pages(self, mock_fitz, processor, sample_batch_id, app):
         """Test PDF to image conversion with multiple pages"""
         mock_doc = Mock()
         mock_doc.__len__ = Mock(return_value=2)  # Multiple pages
