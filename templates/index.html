@@ -54,14 +54,14 @@
         <h3>OCR Processing</h3>
         <p>Extract text from PDF files using OCR with rotation detection.</p>
         <button class="btn" onclick="runTool('ocr')" data-original-text="Run OCR">Run OCR</button>
-        <a href="{{ url_for('main.tool_page', tool='ocr') }}" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     
     <div class="tool-card">
         <h3>Model Benchmarking</h3>
         <p>Test multiple LLM models to find the best one for genealogy extraction.</p>
         <button class="btn" onclick="runTool('benchmark')" data-original-text="Run Benchmark">Run Benchmark</button>
-        <a href="{{ url_for('main.tool_page', tool='benchmark') }}" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     
     <div class="tool-card{% if not system_status.extraction_ready %} tool-disabled{% endif %}">
@@ -78,21 +78,21 @@
                 <p class="warning-text">⚠️ Requires OCR data</p>
             {% endif %}
         {% endif %}
-        <a href="{{ url_for('main.tool_page', tool='extract') }}" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     
     <div class="tool-card">
         <h3>GEDCOM Generation</h3>
         <p>Generate standard GEDCOM files from extracted genealogy data.</p>
         <button class="btn" onclick="runTool('gedcom')" data-original-text="Generate GEDCOM">Generate GEDCOM</button>
-        <a href="{{ url_for('main.tool_page', tool='gedcom') }}" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     
     <div class="tool-card">
         <h3>Research Questions</h3>
         <p>Generate intelligent research questions from your family data.</p>
         <button class="btn" onclick="runTool('research')" data-original-text="Generate Questions">Generate Questions</button>
-        <a href="{{ url_for('main.tool_page', tool='research') }}" class="btn btn-secondary">Details</a>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     
     <div class="tool-card">

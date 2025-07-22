@@ -216,10 +216,10 @@ class ExtractionTaskManager:
 def extract_genealogy_data(self, text_file: str = None):
     """
     Extract genealogy data from text using LLM
-    
+
     Args:
         text_file: Path to text file (optional, defaults to consolidated_text.txt)
-        
+
     Returns:
         dict: Extraction results with summary statistics
     """
@@ -244,7 +244,7 @@ def extract_genealogy_data(self, text_file: str = None):
             state='RETRY',
             meta={'status': 'retrying', 'error': f'Connection error: {str(e)}'}
         )
-        raise Retry(f"Connection error: {e}")
+        raise Retry(f"Connection error: {e}") from e
 
     except Exception as e:
         logger.error(f"Unexpected error during extraction: {e}", exc_info=True)

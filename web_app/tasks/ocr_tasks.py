@@ -39,7 +39,7 @@ class OCRTaskManager:
         try:
             self.output_folder.mkdir(parents=True, exist_ok=True)
         except PermissionError as e:
-            raise PermissionError(f"Cannot create output folder {self.output_folder}: {e}")
+            raise PermissionError(f"Cannot create output folder {self.output_folder}: {e}") from e
 
     def _get_pdf_files(self):
         """Get list of PDF files to process (from uploads or folder)"""
@@ -63,7 +63,7 @@ class OCRTaskManager:
             return True
 
         except PermissionError as e:
-            raise PermissionError(f"Cannot access PDF folder {self.pdf_folder}: {e}")
+            raise PermissionError(f"Cannot access PDF folder {self.pdf_folder}: {e}") from e
 
     def _process_single_pdf(self, pdf_file: Path, output_file: Path) -> bool:
         """Process a single PDF file"""
@@ -223,10 +223,10 @@ class OCRTaskManager:
 def process_pdfs_ocr(self, pdf_folder_path: str = None):
     """
     Process PDFs using OCR and extract text
-    
+
     Args:
         pdf_folder_path: Path to folder containing PDFs (optional, defaults to web_app/pdf_processing/pdfs)
-        
+
     Returns:
         dict: OCR results with file paths and statistics
     """
@@ -267,7 +267,7 @@ def process_pdfs_ocr(self, pdf_folder_path: str = None):
             state='RETRY',
             meta={'status': 'retrying', 'error': f'Connection error: {str(e)}'}
         )
-        raise Retry(f"Connection error: {e}")
+        raise Retry(f"Connection error: {e}") from e
 
     except OSError as e:
         logger.error(f"IO error (will retry): {e}")
@@ -275,7 +275,7 @@ def process_pdfs_ocr(self, pdf_folder_path: str = None):
             state='RETRY',
             meta={'status': 'retrying', 'error': f'IO error: {str(e)}'}
         )
-        raise Retry(f"IO error: {e}")
+        raise Retry(f"IO error: {e}") from e
 
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")

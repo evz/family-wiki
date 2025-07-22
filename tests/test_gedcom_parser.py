@@ -239,7 +239,7 @@ class TestGEDCOMParser:
         try:
             parser.parse_file("non_existent_file.ged")
             # Should handle gracefully or raise FileNotFoundError
-            assert False, "Should have raised FileNotFoundError"
+            raise AssertionError("Should have raised FileNotFoundError")
         except FileNotFoundError:
             # This is expected behavior
             assert True

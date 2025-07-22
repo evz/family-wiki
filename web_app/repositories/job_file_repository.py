@@ -139,13 +139,6 @@ class JobFileRepository:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
             return None
-        except OSError as e:
-            logger.error(f"IO error creating temp file from upload {file_id}: {e}")
-            if temp_fd:
-                os.close(temp_fd)
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-            return None
 
     def create_temp_files_from_uploads(self, task_id, file_type='input'):
         """Create temporary files from all uploaded files for a task"""

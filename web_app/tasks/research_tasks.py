@@ -18,11 +18,11 @@ logger = get_project_logger(__name__)
 def generate_research_questions(self, input_file: str = None, output_file: str = None):
     """
     Generate research questions from extracted genealogy data
-    
+
     Args:
         input_file: Path to input JSON file (optional, defaults to llm_genealogy_results.json)
         output_file: Path to output file (optional, auto-generated)
-        
+
     Returns:
         dict: Research question generation results with file path
     """
@@ -84,7 +84,7 @@ def generate_research_questions(self, input_file: str = None, output_file: str =
                     'total_questions': len(questions) if isinstance(questions, list) else 0
                 }
             except (OSError, PermissionError) as e:
-                raise OSError(f"Failed to save output file: {e}")
+                raise OSError(f"Failed to save output file: {e}") from e
         else:
             # Return questions without saving
             result = {
@@ -127,7 +127,7 @@ def generate_research_questions(self, input_file: str = None, output_file: str =
             state='RETRY',
             meta={'status': 'retrying', 'error': f'IO error: {str(e)}'}
         )
-        raise Retry(f"IO error: {e}")
+        raise Retry(f"IO error: {e}") from e
 
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")

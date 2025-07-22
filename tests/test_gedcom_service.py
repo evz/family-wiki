@@ -335,14 +335,14 @@ class TestGedcomService:
             mock_generator_class.return_value = mock_generator
 
             # Test with only input file specified
-            result = service.generate_gedcom(input_file="custom.json")
+            service.generate_gedcom(input_file="custom.json")
             mock_generator_class.assert_called_once_with("custom.json")
 
             # Reset mock
             mock_generator_class.reset_mock()
 
             # Test with only output file specified
-            result = service.generate_gedcom(output_file="custom.ged")
+            service.generate_gedcom(output_file="custom.ged")
             mock_generator_class.assert_called_once_with("pdf_processing/llm_genealogy_results.json")
 
     def test_service_error_handling_with_none_callback(self, service):

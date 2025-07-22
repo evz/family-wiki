@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy.dialects.postgresql import UUID as PostgreSQL_UUID
+from sqlalchemy.dialects.postgresql import UUID as POSTGRESQL_UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.types import CHAR, TypeDecorator
 
@@ -15,7 +15,7 @@ from . import db
 
 class UUID(TypeDecorator):
     """Platform-independent UUID type.
-    
+
     Uses PostgreSQL's UUID type when available, otherwise uses CHAR(36)
     to store the UUID string.
     """
@@ -24,7 +24,7 @@ class UUID(TypeDecorator):
 
     def load_dialect_impl(self, dialect):
         if dialect.name == 'postgresql':
-            return dialect.type_descriptor(PostgreSQL_UUID())
+            return dialect.type_descriptor(POSTGRESQL_UUID())
         else:
             return dialect.type_descriptor(CHAR(36))
 

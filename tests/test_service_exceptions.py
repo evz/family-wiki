@@ -2,7 +2,6 @@
 Tests for service layer exceptions
 """
 
-import pytest
 
 from web_app.services.exceptions import ConflictError, NotFoundError, ServiceError, ValidationError
 
@@ -50,7 +49,7 @@ class TestServiceExceptions:
     def test_exception_chaining(self):
         """Test exception chaining works correctly"""
         original_error = ValueError("Original error")
-        
+
         try:
             raise ValidationError("Validation failed") from original_error
         except ValidationError as e:

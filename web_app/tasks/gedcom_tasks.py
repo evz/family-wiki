@@ -18,11 +18,11 @@ logger = get_project_logger(__name__)
 def generate_gedcom_file(self, input_file: str = None, output_file: str = None):
     """
     Generate GEDCOM file from extracted genealogy data
-    
+
     Args:
         input_file: Path to input JSON file (optional, defaults to llm_genealogy_results.json)
         output_file: Path to output GEDCOM file (optional, auto-generated)
-        
+
     Returns:
         dict: GEDCOM generation results with file path
     """
@@ -93,7 +93,7 @@ def generate_gedcom_file(self, input_file: str = None, output_file: str = None):
             state='RETRY',
             meta={'status': 'retrying', 'error': f'IO error: {str(e)}'}
         )
-        raise Retry(f"IO error: {e}")
+        raise Retry(f"IO error: {e}") from e
 
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")

@@ -44,27 +44,6 @@ app.py:
 * The print statements can go. The log messages can go.
 * The app should fail to start up if it doesn't have ollama env vars set
 
-extraction.py
-* What is this for anymore? All the things are handled in tools.py now.
-
-api_rag.py
-* What is this for anymore?
-
-api_system.py
-* What is this for anymore?
-
-api -- in general
-* Only JSON endpoints we need are ones that will allow us to check on the
-  status of celery jobs. So, when we have a list view of extractions, we should
-  be able to see the progress of an extraction that's in progress. All other
-  javascript can go to hell. Right now, that's in tools.py (/api/jobs)
-
-system_service.py
-* hardcoded ollama server
-* This whole module is out of date. We're using a DB table for corpora, not
-  static file. We'll never get the correct system status, basically
-* Don't need global instance
-
 main index.html
 * Need to rework this with links to the different parts of the site:
   - Extraction

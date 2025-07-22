@@ -167,14 +167,14 @@ class TestLLMGenealogyExtractor:
         # Use Dutch genealogy format that the method expects
         text = """
         EERSTE GENERATIE
-        
+
         1.1 Kinderen van Jan van der Berg:
         Jan van der Berg * 1850 Amsterdam + 1920 Amsterdam
         Hij trouwde met Maria Jansen * 1855 Utrecht + 1925 Amsterdam
-        
+
         Kinderen:
         a. Piet van der Berg * 1875 Amsterdam
-        b. Marie van der Berg * 1877 Amsterdam  
+        b. Marie van der Berg * 1877 Amsterdam
         c. Hendrik van der Berg * 1880 Amsterdam
         """
         chunks = extractor.split_text_intelligently(text)
@@ -191,13 +191,13 @@ class TestLLMGenealogyExtractor:
 
         text = """
         EERSTE GENERATIE
-        
+
         1.1 Kinderen van Jan van der Berg:
         Jan van der Berg * 1850 Amsterdam + 1920 Amsterdam trouwde met Maria Jansen
         Kinderen: a. Piet van der Berg * 1875, b. Marie van der Berg * 1877
-        
+
         TWEEDE GENERATIE
-        
+
         2.1 Kinderen van Hendrik Jansen:
         Hendrik Jansen * 1860 Rotterdam + 1930 Rotterdam trouwde met Anna de Vries
         Kinderen: a. Willem Jansen * 1885, b. Sara Jansen * 1887, c. Dirk Jansen * 1890
@@ -316,7 +316,7 @@ class TestLLMGenealogyExtractor:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
             temp_file.write("""
             EERSTE GENERATIE
-            
+
             1.1 Kinderen van Jan van der Berg:
             Jan van der Berg * 1850 Amsterdam + 1920 Amsterdam trouwde met Maria Jansen
             Kinderen: a. Piet van der Berg * 1875, b. Marie van der Berg * 1877

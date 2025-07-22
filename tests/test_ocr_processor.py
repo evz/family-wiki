@@ -358,7 +358,7 @@ class TestPDFOCRProcessor:
 
             # Mock file processing
             with patch.object(processor, 'process_pdf', return_value="PDF text") as mock_process, \
-                 patch.object(processor, 'create_consolidated_text') as mock_create, \
+                 patch.object(processor, 'create_consolidated_text'), \
                  patch('builtins.open', mock_open()):
 
                 processor.process_all_pdfs(mock_pdf_dir)

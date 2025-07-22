@@ -2,9 +2,7 @@
 Tests for service utility functions
 """
 
-from unittest.mock import Mock, patch
-
-import pytest
+from unittest.mock import patch
 
 from web_app.services.exceptions import ConflictError, NotFoundError, ServiceError, ValidationError
 from web_app.services.service_utils import handle_service_errors
@@ -45,12 +43,12 @@ class TestHandleServiceErrors:
             with patch('web_app.services.service_utils.flash') as mock_flash, \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/main"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function()
-                
+
                 assert result == "redirect_response"
                 mock_flash.assert_called_once_with("Validation error: Invalid input", "error")
                 mock_url_for.assert_called_once_with("main.index")
@@ -66,12 +64,12 @@ class TestHandleServiceErrors:
             with patch('web_app.services.service_utils.flash') as mock_flash, \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/main"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function()
-                
+
                 assert result == "redirect_response"
                 mock_flash.assert_called_once_with("Not found: Resource not found", "error")
                 mock_url_for.assert_called_once_with("main.index")
@@ -86,12 +84,12 @@ class TestHandleServiceErrors:
             with patch('web_app.services.service_utils.flash') as mock_flash, \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/main"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function()
-                
+
                 assert result == "redirect_response"
                 mock_flash.assert_called_once_with("Conflict: Resource conflict", "error")
 
@@ -105,12 +103,12 @@ class TestHandleServiceErrors:
             with patch('web_app.services.service_utils.flash') as mock_flash, \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/main"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function()
-                
+
                 assert result == "redirect_response"
                 mock_flash.assert_called_once_with("Error: Generic service error", "error")
 
@@ -124,12 +122,12 @@ class TestHandleServiceErrors:
             with patch('web_app.services.service_utils.flash') as mock_flash, \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/main"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function()
-                
+
                 assert result == "redirect_response"
                 mock_flash.assert_called_once_with("Unexpected error: Unexpected error", "error")
 
@@ -140,15 +138,15 @@ class TestHandleServiceErrors:
             raise ValidationError("Test error")
 
         with app.test_request_context():
-            with patch('web_app.services.service_utils.flash') as mock_flash, \
+            with patch('web_app.services.service_utils.flash'), \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/custom"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function()
-                
+
                 assert result == "redirect_response"
                 mock_url_for.assert_called_once_with("custom.endpoint")
 
@@ -182,11 +180,11 @@ class TestHandleServiceErrors:
             with patch('web_app.services.service_utils.flash') as mock_flash, \
                  patch('web_app.services.service_utils.redirect') as mock_redirect, \
                  patch('web_app.services.service_utils.url_for') as mock_url_for:
-                
+
                 mock_url_for.return_value = "/main"
                 mock_redirect.return_value = "redirect_response"
-                
+
                 result = test_function("test1", "test2")
-                
+
                 assert result == "redirect_response"
                 mock_flash.assert_called_once_with("Validation error: Error with test1 and test2", "error")
