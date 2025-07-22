@@ -26,7 +26,9 @@ class GEDCOMWriter:
     def generate(self) -> str:
         """Generate GEDCOM content as string for backward compatibility"""
         # This method exists for backward compatibility with existing code
-        lines = self.formatter.format_gedcom(self.people, self.families)
+        people = getattr(self, 'people', None)
+        families = getattr(self, 'families', None)
+        lines = self.formatter.format_gedcom(people, families)
         return '\n'.join(lines)
 
     def add_person(self, person: Person) -> None:
