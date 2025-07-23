@@ -81,7 +81,7 @@ class TestGenerateResearchQuestionsTask:
             "What was Johannes van Berg's birth date?",
             "Where did Maria de Vries live before marriage?"
         ]
-        mock_generator.generate_questions.return_value = mock_questions
+        mock_generator.generate_all_questions.return_value = mock_questions
 
         # Call the task using pytest-celery approach
         result = generate_research_questions.apply(args=(temp_input_file, None))
@@ -96,14 +96,14 @@ class TestGenerateResearchQuestionsTask:
         assert 'output_file' not in result_data
 
         # Verify generator was called correctly
-        mock_generator.generate_questions.assert_called_once()
+        mock_generator.generate_all_questions.assert_called_once()
         mock_logger.info.assert_called_once()
         assert mock_current_task.update_state.call_count >= 4
 
     def test_generate_research_questions_success_with_output_file(self, temp_input_file, mock_generator, mock_current_task, mock_logger):
         """Test successful research question generation with output file"""
         mock_questions = {"research_questions": ["Question 1", "Question 2"]}
-        mock_generator.generate_questions.return_value = mock_questions
+        mock_generator.generate_all_questions.return_value = mock_questions
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as output_file:
             output_path = output_file.name
@@ -127,7 +127,7 @@ class TestGenerateResearchQuestionsTask:
                 saved_data = json.load(f)
                 assert saved_data == mock_questions
 
-            mock_generator.generate_questions.assert_called_once()
+            mock_generator.generate_all_questions.assert_called_once()
             mock_logger.info.assert_called_once()
         finally:
             Path(output_path).unlink(missing_ok=True)
@@ -135,7 +135,7 @@ class TestGenerateResearchQuestionsTask:
     def test_generate_research_questions_default_input_file(self, mock_generator, mock_current_task, mock_logger):
         """Test research question generation with default input file"""
         default_input = "web_app/pdf_processing/llm_genealogy_results.json"
-        mock_generator.generate_questions.return_value = ["Question 1"]
+        mock_generator.generate_all_questions.return_value = ["Question 1"]
 
         with patch('web_app.tasks.research_tasks.Path') as mock_path_class:
             # Mock Path behavior
@@ -187,7 +187,7 @@ class TestGenerateResearchQuestionsTask:
     def test_generate_research_questions_generator_runtime_error(self, temp_input_file, mock_generator, mock_current_task, mock_logger):
         """Test research question generation with generator runtime error"""
         # Setup mock generator to raise RuntimeError
-        mock_generator.generate_questions.side_effect = RuntimeError("Generation failed")
+        mock_generator.generate_all_questions.side_effect = RuntimeError("Generation failed")
 
         # Call the task
         result = generate_research_questions.apply(args=(temp_input_file, None))
@@ -205,7 +205,7 @@ class TestGenerateResearchQuestionsTask:
 
     def test_generate_research_questions_output_file_permission_error(self, temp_input_file, mock_generator, mock_current_task, mock_logger):
         """Test research question generation with output file permission error"""
-        mock_generator.generate_questions.return_value = ["Question 1"]
+        mock_generator.generate_all_questions.return_value = ["Question 1"]
 
         # Mock file opening to raise PermissionError
         with patch('builtins.open', side_effect=PermissionError("Permission denied")):
@@ -224,7 +224,7 @@ class TestGenerateResearchQuestionsTask:
 
     def test_generate_research_questions_output_file_os_error(self, temp_input_file, mock_generator, mock_current_task, mock_logger):
         """Test research question generation with output file OS error"""
-        mock_generator.generate_questions.return_value = ["Question 1"]
+        mock_generator.generate_all_questions.return_value = ["Question 1"]
 
         # Mock file opening to raise OSError
         with patch('builtins.open', side_effect=OSError("Disk full")):
@@ -264,7 +264,7 @@ class TestGenerateResearchQuestionsTask:
         """Test research question generation with string output (not JSON)"""
         # Setup mock generator to return string
         mock_questions = "Research questions as string"
-        mock_generator.generate_questions.return_value = mock_questions
+        mock_generator.generate_all_questions.return_value = mock_questions
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as output_file:
             output_path = output_file.name
@@ -290,7 +290,7 @@ class TestGenerateResearchQuestionsTask:
         """Test research question generation with list output"""
         # Setup mock generator to return list
         mock_questions = ["Question 1", "Question 2", "Question 3"]
-        mock_generator.generate_questions.return_value = mock_questions
+        mock_generator.generate_all_questions.return_value = mock_questions
 
         # Call the task
         result = generate_research_questions.apply(args=(temp_input_file, None))
@@ -304,7 +304,7 @@ class TestGenerateResearchQuestionsTask:
 
     def test_generate_research_questions_progress_updates(self, temp_input_file, mock_generator, mock_current_task, mock_logger):
         """Test that progress updates are called correctly"""
-        mock_generator.generate_questions.return_value = ["Question 1"]
+        mock_generator.generate_all_questions.return_value = ["Question 1"]
 
         # Call the task
         result = generate_research_questions.apply(args=(temp_input_file, None))

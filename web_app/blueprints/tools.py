@@ -3,7 +3,10 @@ Tools dashboard blueprint - unified job management
 """
 import uuid
 
+from celery.exceptions import OperationalError
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
+from kombu.exceptions import ConnectionError
+from kombu.exceptions import OperationalError as KombuOperationalError
 
 from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.shared.logging_config import get_project_logger
@@ -16,6 +19,33 @@ from web_app.tasks.research_tasks import generate_research_questions
 logger = get_project_logger(__name__)
 
 tools_bp = Blueprint('tools', __name__, url_prefix='/tools')
+
+
+def safe_task_submit(task_func, task_name, *args, **kwargs):
+    """Safely submit a Celery task with proper broker exception handling.
+
+    Args:
+        task_func: The task function to call (e.g., process_pdfs_ocr.delay)
+        task_name: Human-readable task name for error messages
+        *args, **kwargs: Arguments to pass to the task function
+
+    Returns:
+        Task object if successful, None if failed
+    """
+    try:
+        return task_func(*args, **kwargs)
+    except (OperationalError, KombuOperationalError, ConnectionError) as e:
+        logger.error(f"Broker connection failed for {task_name} task: {e}")
+        flash('Unable to connect to task queue - check that Redis and Celery worker are running', 'error')
+        return None
+    except OSError as e:
+        logger.error(f"Network error submitting {task_name} task: {e}")
+        flash('Network error - unable to reach task queue', 'error')
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error submitting {task_name} task: {e}", exc_info=True)
+        flash('An unexpected error occurred while starting the job', 'error')
+        return None
 
 @tools_bp.route('/')
 def dashboard():
@@ -36,14 +66,10 @@ def start_ocr():
 
     # If no files uploaded, use default folder
     if not pdf_files or all(f.filename == '' for f in pdf_files):
-        try:
-            task = process_pdfs_ocr.delay()
+        task = safe_task_submit(process_pdfs_ocr.delay, "OCR")
+        if task:
             flash(f'OCR job started using default folder. Task ID: {task.id}', 'success')
             logger.info(f"Started OCR task: {task.id}")
-        except Exception as e:
-            logger.error(f"Failed to start OCR task: {e}")
-            flash(f'Failed to start OCR job: {str(e)}', 'error')
-
         return redirect(url_for('tools.dashboard'))
 
     # Save uploaded files first
@@ -62,14 +88,14 @@ def start_ocr():
             return redirect(url_for('tools.dashboard'))
 
         # Now start the task with the pre-generated task ID
-        task = process_pdfs_ocr.apply_async(task_id=task_id)
+        task = safe_task_submit(process_pdfs_ocr.apply_async, "OCR", task_id=task_id)
+        if task:
+            flash(f'OCR job started with {len(saved_files)} uploaded files. Task ID: {task.id}', 'success')
+            logger.info(f"Started OCR task with uploaded files: {task.id}")
 
-        flash(f'OCR job started with {len(saved_files)} uploaded files. Task ID: {task.id}', 'success')
-        logger.info(f"Started OCR task with uploaded files: {task.id}")
-
-    except Exception as e:
-        logger.error(f"Failed to start OCR task: {e}")
-        flash(f'Failed to start OCR job: {str(e)}', 'error')
+    except OSError as e:
+        logger.error(f"File system error saving uploaded files: {e}")
+        flash('Error saving uploaded files - check disk space and permissions', 'error')
 
     return redirect(url_for('tools.dashboard'))
 
@@ -84,14 +110,10 @@ def start_extraction():
 
     # If no file uploaded, use latest OCR results
     if not text_file or text_file.filename == '':
-        try:
-            task = extract_genealogy_data.apply_async(task_id=task_id)
+        task = safe_task_submit(extract_genealogy_data.apply_async, "extraction", task_id=task_id)
+        if task:
             flash(f'Extraction job started using latest OCR results. Task ID: {task.id}', 'success')
             logger.info(f"Started extraction task: {task.id}")
-        except Exception as e:
-            logger.error(f"Failed to start extraction task: {e}")
-            flash(f'Failed to start extraction job: {str(e)}', 'error')
-
         return redirect(url_for('tools.dashboard'))
 
     # Save uploaded file first
@@ -102,14 +124,14 @@ def start_extraction():
             return redirect(url_for('tools.dashboard'))
 
         # Start the task with the pre-generated task ID
-        task = extract_genealogy_data.apply_async(task_id=task_id)
+        task = safe_task_submit(extract_genealogy_data.apply_async, "extraction", task_id=task_id)
+        if task:
+            flash(f'Extraction job started with uploaded file. Task ID: {task.id}', 'success')
+            logger.info(f"Started extraction task with uploaded file: {task.id}")
 
-        flash(f'Extraction job started with uploaded file. Task ID: {task.id}', 'success')
-        logger.info(f"Started extraction task with uploaded file: {task.id}")
-
-    except Exception as e:
-        logger.error(f"Failed to start extraction task: {e}")
-        flash(f'Failed to start extraction job: {str(e)}', 'error')
+    except OSError as e:
+        logger.error(f"File system error saving uploaded extraction file: {e}")
+        flash('Error saving uploaded file - check disk space and permissions', 'error')
 
     return redirect(url_for('tools.dashboard'))
 
@@ -124,14 +146,10 @@ def start_gedcom():
 
     # If no file uploaded, use latest extraction results
     if not input_file or input_file.filename == '':
-        try:
-            task = generate_gedcom_file.apply_async(task_id=task_id)
+        task = safe_task_submit(generate_gedcom_file.apply_async, "GEDCOM", task_id=task_id)
+        if task:
             flash(f'GEDCOM generation job started using latest extraction results. Task ID: {task.id}', 'success')
             logger.info(f"Started GEDCOM task: {task.id}")
-        except Exception as e:
-            logger.error(f"Failed to start GEDCOM task: {e}")
-            flash(f'Failed to start GEDCOM job: {str(e)}', 'error')
-
         return redirect(url_for('tools.dashboard'))
 
     # Save uploaded file first
@@ -142,14 +160,14 @@ def start_gedcom():
             return redirect(url_for('tools.dashboard'))
 
         # Start the task with the pre-generated task ID
-        task = generate_gedcom_file.apply_async(task_id=task_id)
+        task = safe_task_submit(generate_gedcom_file.apply_async, "GEDCOM", task_id=task_id)
+        if task:
+            flash(f'GEDCOM generation job started with uploaded file. Task ID: {task.id}', 'success')
+            logger.info(f"Started GEDCOM task with uploaded file: {task.id}")
 
-        flash(f'GEDCOM generation job started with uploaded file. Task ID: {task.id}', 'success')
-        logger.info(f"Started GEDCOM task with uploaded file: {task.id}")
-
-    except Exception as e:
-        logger.error(f"Failed to start GEDCOM task: {e}")
-        flash(f'Failed to start GEDCOM job: {str(e)}', 'error')
+    except OSError as e:
+        logger.error(f"File system error saving uploaded GEDCOM file: {e}")
+        flash('Error saving uploaded file - check disk space and permissions', 'error')
 
     return redirect(url_for('tools.dashboard'))
 
@@ -243,8 +261,65 @@ def download_result(task_id):
             mimetype=download_file.content_type
         )
 
+    except OSError as e:
+        logger.error(f"IO error downloading result for task {task_id}: {e}")
+        flash('File system error occurred while preparing download', 'error')
+    except ValueError as e:
+        logger.error(f"Invalid data for task {task_id}: {e}")
+        flash('Invalid file data - cannot create download', 'error')
+    except ImportError as e:
+        logger.error(f"Missing dependency for download: {e}")
+        flash('System configuration error - missing required components', 'error')
     except Exception as e:
-        logger.error(f"Error downloading result for task {task_id}: {e}")
-        flash(f'Error downloading result: {str(e)}', 'error')
+        logger.error(f"Unexpected error downloading result for task {task_id}: {e}", exc_info=True)
+        flash('An unexpected error occurred while preparing the download', 'error')
+
+    return redirect(url_for('tools.dashboard'))
+
+@tools_bp.route('/research-questions/<task_id>')
+def view_research_questions(task_id):
+    """View research questions for a completed job"""
+    try:
+        # Get task result
+        task = generate_research_questions.AsyncResult(task_id)
+
+        if task.state == 'PENDING':
+            flash('Research questions task is still pending', 'warning')
+            return redirect(url_for('tools.dashboard'))
+
+        if task.state == 'FAILURE':
+            error_msg = str(task.result) if task.result else 'Unknown error'
+            flash(f'Research questions task failed: {error_msg}', 'error')
+            return redirect(url_for('tools.dashboard'))
+
+        if task.state != 'SUCCESS':
+            flash(f'Research questions task is still running (status: {task.state})', 'info')
+            return redirect(url_for('tools.dashboard'))
+
+        # Get the result data
+        result = task.result
+        if not result or not result.get('success'):
+            flash('Research questions generation was not successful', 'error')
+            return redirect(url_for('tools.dashboard'))
+
+        questions = result.get('questions', [])
+        input_file = result.get('input_file', 'Unknown')
+        total_questions = result.get('total_questions', len(questions) if isinstance(questions, list) else 0)
+
+        return render_template('tools/research_questions.html',
+                             task_id=task_id,
+                             questions=questions,
+                             input_file=input_file,
+                             total_questions=total_questions)
+
+    except AttributeError as e:
+        logger.error(f"Task object error for {task_id}: {e}")
+        flash('Invalid task ID or task no longer exists', 'error')
+    except KeyError as e:
+        logger.error(f"Missing expected data in task result for {task_id}: {e}")
+        flash('Task result is incomplete or corrupted', 'error')
+    except Exception as e:
+        logger.error(f"Unexpected error viewing research questions for task {task_id}: {e}", exc_info=True)
+        flash('An unexpected error occurred while retrieving research questions', 'error')
 
     return redirect(url_for('tools.dashboard'))

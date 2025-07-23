@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-    <h2>Available Tools</h2>
-    <button class="btn btn-secondary" onclick="refreshStatus()">🔄 Refresh Status</button>
+    <h2>Family Wiki Tools Dashboard</h2>
+    <a href="{{ url_for('tools.dashboard') }}" class="btn btn-primary">Go to Tools Dashboard</a>
 </div>
 
 <!-- System Status Section -->
@@ -53,22 +53,20 @@
     <div class="tool-card">
         <h3>OCR Processing</h3>
         <p>Extract text from PDF files using OCR with rotation detection.</p>
-        <button class="btn" onclick="runTool('ocr')" data-original-text="Run OCR">Run OCR</button>
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
+        <a href="{{ url_for('tools.dashboard') }}#ocr" class="btn btn-primary">Run OCR</a>
     </div>
     
     <div class="tool-card">
         <h3>Model Benchmarking</h3>
         <p>Test multiple LLM models to find the best one for genealogy extraction.</p>
-        <button class="btn" onclick="runTool('benchmark')" data-original-text="Run Benchmark">Run Benchmark</button>
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
+        <a href="{{ url_for('tools.dashboard') }}#benchmark" class="btn btn-primary">Run Benchmark</a>
     </div>
     
     <div class="tool-card{% if not system_status.extraction_ready %} tool-disabled{% endif %}">
         <h3>LLM Extraction</h3>
         <p>Extract genealogical data from text using AI language models with family-focused approach.</p>
         {% if system_status.extraction_ready %}
-            <button class="btn" onclick="runTool('extract')" data-original-text="Run Extraction">Run Extraction</button>
+            <a href="{{ url_for('tools.dashboard') }}#extraction" class="btn btn-primary">Run Extraction</a>
         {% else %}
             <button class="btn btn-disabled" disabled title="Requires Ollama server and OCR data">Run Extraction (Unavailable)</button>
             {% if not system_status.ollama.available %}
@@ -84,14 +82,14 @@
     <div class="tool-card">
         <h3>GEDCOM Generation</h3>
         <p>Generate standard GEDCOM files from extracted genealogy data.</p>
-        <button class="btn" onclick="runTool('gedcom')" data-original-text="Generate GEDCOM">Generate GEDCOM</button>
+        <a href="{{ url_for('tools.dashboard') }}#gedcom" class="btn btn-primary">Generate GEDCOM</a>
         <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     
     <div class="tool-card">
         <h3>Research Questions</h3>
         <p>Generate intelligent research questions from your family data.</p>
-        <button class="btn" onclick="runTool('research')" data-original-text="Generate Questions">Generate Questions</button>
+        <a href="{{ url_for('tools.dashboard') }}#research" class="btn btn-primary">Generate Questions</a>
         <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
     

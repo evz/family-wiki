@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Research Questions - Task {{ task_id }} - Family Wiki Tools{% endblock %}
+
+{% block content %}
+<div class="research-questions-page">
+    <div class="page-header">
+        <h2>Research Questions</h2>
+        <p>Generated research questions for genealogy investigation</p>
+        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">← Back to Tools Dashboard</a>
+    </div>
+
+    <div class="task-info">
+        <h3>Task Information</h3>
+        <ul>
+            <li><strong>Task ID:</strong> <code>{{ task_id }}</code></li>
+            <li><strong>Input File:</strong> {{ input_file }}</li>
+            <li><strong>Total Questions:</strong> {{ total_questions }}</li>
+        </ul>
+    </div>
+
+    <div class="questions-section">
+        {% if questions %}
+            {% if questions is mapping %}
+                <!-- Handle dict/object response format -->
+                {% for category, question_list in questions.items() %}
+                    <div class="question-category">
+                        <h3>{{ category|title }}</h3>
+                        {% if question_list is iterable and question_list is not string %}
+                            <ul class="question-list">
+                                {% for question in question_list %}
+                                    <li class="question-item">
+                                        {% if question is mapping %}
+                                            <div class="question-text">{{ question.question or question.text or question }}</div>
+                                            {% if question.priority %}
+                                                <span class="question-priority priority-{{ question.priority }}">{{ question.priority|title }}</span>
+                                            {% endif %}
+                                            {% if question.evidence %}
+                                                <div class="question-evidence">Evidence: {{ question.evidence }}</div>
+                                            {% endif %}
+                                        {% else %}
+                                            <div class="question-text">{{ question }}</div>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="question-item">
+                                <div class="question-text">{{ question_list }}</div>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% elif questions is iterable and questions is not string %}
+                <!-- Handle list response format -->
+                <div class="question-category">
+                    <h3>Research Questions</h3>
+                    <ul class="question-list">
+                        {% for question in questions %}
+                            <li class="question-item">
+                                {% if question is mapping %}
+                                    <div class="question-text">{{ question.question or question.text or question }}</div>
+                                    {% if question.category %}
+                                        <span class="question-category-tag">{{ question.category }}</span>
+                                    {% endif %}
+                                    {% if question.priority %}
+                                        <span class="question-priority priority-{{ question.priority }}">{{ question.priority|title }}</span>
+                                    {% endif %}
+                                    {% if question.evidence %}
+                                        <div class="question-evidence">Evidence: {{ question.evidence }}</div>
+                                    {% endif %}
+                                    {% if question.potential_sources %}
+                                        <div class="question-sources">
+                                            <strong>Potential Sources:</strong>
+                                            {% for source in question.potential_sources %}
+                                                <span class="source-tag">{{ source }}</span>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                {% else %}
+                                    <div class="question-text">{{ question }}</div>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% else %}
+                <!-- Handle string response format -->
+                <div class="question-category">
+                    <h3>Research Questions</h3>
+                    <div class="question-text-block">{{ questions }}</div>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="no-questions">
+                <p>No research questions were generated.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

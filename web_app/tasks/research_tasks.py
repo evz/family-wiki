@@ -58,7 +58,7 @@ def generate_research_questions(self, input_file: str = None, output_file: str =
         )
 
         # Generate questions
-        questions = generator.generate_questions()
+        questions = generator.generate_all_questions()
 
         current_task.update_state(
             state='RUNNING',
@@ -114,7 +114,7 @@ def generate_research_questions(self, input_file: str = None, output_file: str =
         raise
 
     except RuntimeError as e:
-        logger.error(f"Research question generation failed: {e}")
+        logger.error(f"Research question generation failed: {e}", exc_info=True)
         current_task.update_state(
             state='FAILURE',
             meta={'status': 'failed', 'error': str(e)}
