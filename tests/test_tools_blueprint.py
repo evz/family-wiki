@@ -463,3 +463,320 @@ class TestToolsBlueprint:
         assert response.status_code == 302
         # Should use default folder path when filename is empty
         mock_task.delay.assert_called_once()
+
+    # Job Status API Tests
+    def test_api_jobs_empty_list(self, client):
+        """Test /api/jobs returns empty list"""
+        response = client.get('/tools/api/jobs')
+
+        assert response.status_code == 200
+        assert response.json == {'jobs': []}
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_pending(self, mock_celery_app, client):
+        """Test job status API with PENDING task"""
+        mock_result = Mock()
+        mock_result.state = 'PENDING'
+        mock_result.info = None
+        mock_result.result = None
+        mock_result.name = 'web_app.tasks.ocr_tasks.process_pdfs_ocr'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['task_id'] == 'test-task-id'
+        assert data['status'] == 'pending'
+        assert data['task_type'] == 'ocr'
+        assert data['message'] == 'Task is waiting to be processed'
+        assert data['progress'] == 0
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_running_with_progress(self, mock_celery_app, client):
+        """Test job status API with RUNNING task that has progress info"""
+        mock_result = Mock()
+        mock_result.state = 'RUNNING'
+        mock_result.info = {'progress': 75, 'status': 'Processing page 3 of 4'}
+        mock_result.name = 'web_app.tasks.extraction_tasks.extract_genealogy_data'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'running'
+        assert data['task_type'] == 'extraction'
+        assert data['progress'] == 75
+        assert data['message'] == 'Processing page 3 of 4'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_running_no_progress(self, mock_celery_app, client):
+        """Test job status API with RUNNING task without progress info"""
+        mock_result = Mock()
+        mock_result.state = 'RUNNING'
+        mock_result.info = None
+        mock_result.name = 'web_app.tasks.gedcom_tasks.generate_gedcom_file'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'running'
+        assert data['task_type'] == 'gedcom'
+        assert data['progress'] == 50
+        assert data['message'] == 'Task is running'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_success(self, mock_celery_app, client):
+        """Test job status API with successful task"""
+        mock_result = Mock()
+        mock_result.state = 'SUCCESS'
+        mock_result.result = {'success': True, 'questions': ['Question 1', 'Question 2']}
+        mock_result.name = 'web_app.tasks.research_tasks.generate_research_questions'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'success'
+        assert data['task_type'] == 'research'
+        assert data['progress'] == 100
+        assert data['message'] == 'Task completed successfully'
+        assert data['success'] is True
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_failure_with_dict_error(self, mock_celery_app, client):
+        """Test job status API with failed task containing dict error"""
+        mock_result = Mock()
+        mock_result.state = 'FAILURE'
+        mock_result.result = {'error': 'File not found: input.txt'}
+        mock_result.name = 'web_app.tasks.ocr_tasks.process_pdfs_ocr'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'failure'
+        assert data['task_type'] == 'ocr'
+        assert data['progress'] == 0
+        assert data['message'] == 'File not found: input.txt'
+        assert data['error'] == 'File not found: input.txt'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_failure_with_string_error(self, mock_celery_app, client):
+        """Test job status API with failed task containing string error"""
+        mock_result = Mock()
+        mock_result.state = 'FAILURE'
+        mock_result.result = 'Connection timeout error'
+        mock_result.name = 'web_app.tasks.extraction_tasks.extract_genealogy_data'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'failure'
+        assert data['message'] == 'Connection timeout error'
+        assert data['error'] == 'Connection timeout error'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_failure_no_result(self, mock_celery_app, client):
+        """Test job status API with failed task without result"""
+        mock_result = Mock()
+        mock_result.state = 'FAILURE'
+        mock_result.result = None
+        mock_result.name = 'web_app.tasks.gedcom_tasks.generate_gedcom_file'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'failure'
+        assert data['message'] == 'Task failed with unknown error'
+        assert data['error'] == 'Task failed with unknown error'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_retry(self, mock_celery_app, client):
+        """Test job status API with retrying task"""
+        mock_result = Mock()
+        mock_result.state = 'RETRY'
+        mock_result.info = {'progress': 30, 'status': 'Retrying after connection error'}
+        mock_result.name = 'web_app.tasks.research_tasks.generate_research_questions'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'retry'
+        assert data['progress'] == 30
+        assert data['message'] == 'Retrying after connection error'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_unknown_state(self, mock_celery_app, client):
+        """Test job status API with unknown task state"""
+        mock_result = Mock()
+        mock_result.state = 'REVOKED'
+        mock_result.name = 'web_app.tasks.ocr_tasks.process_pdfs_ocr'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'revoked'
+        assert data['message'] == 'Task state: REVOKED'
+        assert data['progress'] == 0
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_unknown_task_type(self, mock_celery_app, client):
+        """Test job status API with unknown task type"""
+        mock_result = Mock()
+        mock_result.state = 'SUCCESS'
+        mock_result.result = {'success': True}
+        mock_result.name = 'web_app.tasks.unknown_tasks.some_task'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['task_type'] == 'unknown'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_no_task_name(self, mock_celery_app, client):
+        """Test job status API with task that has no name"""
+        mock_result = Mock()
+        mock_result.state = 'SUCCESS'
+        mock_result.result = {'success': True}
+        mock_result.name = None
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['task_type'] == 'unknown'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_connection_error(self, mock_celery_app, client):
+        """Test job status API with Redis connection error"""
+        from kombu.exceptions import ConnectionError
+        mock_celery_app.AsyncResult.side_effect = ConnectionError('Connection refused')
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 503
+        data = response.json
+        assert data['status'] == 'error'
+        assert data['message'] == 'Unable to connect to task queue'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_attribute_error(self, mock_celery_app, client):
+        """Test job status API with invalid task ID format"""
+        mock_celery_app.AsyncResult.side_effect = AttributeError('Invalid task ID')
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 400
+        data = response.json
+        assert data['status'] == 'error'
+        assert data['message'] == 'Invalid task ID format'
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_unexpected_error(self, mock_celery_app, client):
+        """Test job status API with unexpected error"""
+        mock_celery_app.AsyncResult.side_effect = RuntimeError('Unexpected error')
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 500
+        data = response.json
+        assert data['status'] == 'error'
+        assert data['message'] == 'Unable to retrieve task status'
+
+    # Test helper functions
+    def test_extract_task_type_ocr(self):
+        """Test _extract_task_type for OCR tasks"""
+        from web_app.blueprints.tools import _extract_task_type
+
+        mock_result = Mock()
+        mock_result.name = 'web_app.tasks.ocr_tasks.process_pdfs_ocr'
+
+        task_type = _extract_task_type(mock_result)
+        assert task_type == 'ocr'
+
+    def test_extract_task_type_extraction(self):
+        """Test _extract_task_type for extraction tasks"""
+        from web_app.blueprints.tools import _extract_task_type
+
+        mock_result = Mock()
+        mock_result.name = 'web_app.tasks.extraction_tasks.extract_genealogy_data'
+
+        task_type = _extract_task_type(mock_result)
+        assert task_type == 'extraction'
+
+    def test_extract_task_type_gedcom(self):
+        """Test _extract_task_type for GEDCOM tasks"""
+        from web_app.blueprints.tools import _extract_task_type
+
+        mock_result = Mock()
+        mock_result.name = 'web_app.tasks.gedcom_tasks.generate_gedcom_file'
+
+        task_type = _extract_task_type(mock_result)
+        assert task_type == 'gedcom'
+
+    def test_extract_task_type_research(self):
+        """Test _extract_task_type for research tasks"""
+        from web_app.blueprints.tools import _extract_task_type
+
+        mock_result = Mock()
+        mock_result.name = 'web_app.tasks.research_tasks.generate_research_questions'
+
+        task_type = _extract_task_type(mock_result)
+        assert task_type == 'research'
+
+    def test_extract_failure_message_dict_with_error(self):
+        """Test _extract_failure_message with dict containing error key"""
+        from web_app.blueprints.tools import _extract_failure_message
+
+        mock_result = Mock()
+        mock_result.result = {'error': 'File not found'}
+
+        message = _extract_failure_message(mock_result)
+        assert message == 'File not found'
+
+    def test_extract_failure_message_dict_with_message(self):
+        """Test _extract_failure_message with dict containing message key"""
+        from web_app.blueprints.tools import _extract_failure_message
+
+        mock_result = Mock()
+        mock_result.result = {'message': 'Processing failed'}
+
+        message = _extract_failure_message(mock_result)
+        assert message == 'Processing failed'
+
+    def test_extract_failure_message_string(self):
+        """Test _extract_failure_message with string result"""
+        from web_app.blueprints.tools import _extract_failure_message
+
+        mock_result = Mock()
+        mock_result.result = 'Connection timeout'
+
+        message = _extract_failure_message(mock_result)
+        assert message == 'Connection timeout'
+
+    def test_extract_failure_message_no_result(self):
+        """Test _extract_failure_message with no result"""
+        from web_app.blueprints.tools import _extract_failure_message
+
+        mock_result = Mock()
+        mock_result.result = None
+
+        message = _extract_failure_message(mock_result)
+        assert message == 'Task failed with unknown error'
