@@ -533,7 +533,7 @@ class TestToolsBlueprint:
         """Test job status API with successful task"""
         mock_result = Mock()
         mock_result.state = 'SUCCESS'
-        mock_result.result = {'success': True, 'questions': ['Question 1', 'Question 2']}
+        mock_result.result = {'success': True, 'questions': ['Question 1', 'Question 2'], 'download_available': True}
         mock_result.name = 'web_app.tasks.research_tasks.generate_research_questions'
         mock_celery_app.AsyncResult.return_value = mock_result
 
@@ -546,6 +546,23 @@ class TestToolsBlueprint:
         assert data['progress'] == 100
         assert data['message'] == 'Task completed successfully'
         assert data['success'] is True
+        assert data['download_available'] is True
+
+    @patch('web_app.blueprints.tools.celery_app')
+    def test_api_job_status_success_no_download(self, mock_celery_app, client):
+        """Test job status API with successful task but no download available"""
+        mock_result = Mock()
+        mock_result.state = 'SUCCESS'
+        mock_result.result = {'success': True, 'questions': []}  # No download_available field
+        mock_result.name = 'web_app.tasks.research_tasks.generate_research_questions'
+        mock_celery_app.AsyncResult.return_value = mock_result
+
+        response = client.get('/tools/api/jobs/test-task-id/status')
+
+        assert response.status_code == 200
+        data = response.json
+        assert data['status'] == 'success'
+        assert data['download_available'] is False  # Should default to False
 
     @patch('web_app.blueprints.tools.celery_app')
     def test_api_job_status_failure_with_dict_error(self, mock_celery_app, client):

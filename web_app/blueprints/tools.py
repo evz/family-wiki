@@ -255,9 +255,10 @@ def api_job_status(task_id):
                 'progress': 100,
                 'message': 'Task completed successfully'
             })
-            # Add success flag if available
+            # Add success flag and download availability if available
             if task_result.result and isinstance(task_result.result, dict):
                 response['success'] = task_result.result.get('success', True)
+                response['download_available'] = task_result.result.get('download_available', False)
 
         elif task_result.state == 'FAILURE':
             error_message = _extract_failure_message(task_result)

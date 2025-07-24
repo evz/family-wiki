@@ -5,7 +5,9 @@ from pathlib import Path
 
 from celery import current_task
 from celery.exceptions import Retry
+from sqlalchemy.exc import SQLAlchemyError
 
+from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.services.gedcom_service import gedcom_service
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.celery_app import celery_app
@@ -58,6 +60,37 @@ def generate_gedcom_file(self, input_file: str = None, output_file: str = None):
         )
 
         if result['success']:
+            # Save the GEDCOM file to the job repository for download
+            try:
+                file_repo = JobFileRepository()
+                output_file_path = result['output_file']
+
+                # Read the generated GEDCOM file
+                with open(output_file_path, 'rb') as f:
+                    gedcom_content = f.read()
+
+                # Save as downloadable file
+                file_repo.save_job_file(
+                    task_id=current_task.request.id,
+                    filename=Path(output_file_path).name,
+                    file_data=gedcom_content,
+                    content_type='application/x-gedcom',
+                    file_type='output'
+                )
+
+                result['download_available'] = True
+                logger.info(f"GEDCOM file saved for download: {output_file_path}")
+
+            except SQLAlchemyError as e:
+                logger.error(f"Database error saving GEDCOM file for download: {e}")
+                result['download_available'] = False
+            except (OSError, PermissionError) as e:
+                logger.error(f"File system error saving GEDCOM file for download: {e}")
+                result['download_available'] = False
+            except Exception as e:
+                logger.error(f"Unexpected error saving GEDCOM file for download: {e}")
+                result['download_available'] = False
+
             logger.info(f"GEDCOM generation completed successfully: {result}")
             return result
         else:

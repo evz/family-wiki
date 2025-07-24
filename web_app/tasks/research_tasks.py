@@ -1,11 +1,14 @@
 """
 Celery tasks for research question generation
 """
+import json
 from pathlib import Path
 
 from celery import current_task
 from celery.exceptions import Retry
+from sqlalchemy.exc import SQLAlchemyError
 
+from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.research_question_generator import ResearchQuestionGenerator
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.celery_app import celery_app
@@ -71,7 +74,6 @@ def generate_research_questions(self, input_file: str = None, output_file: str =
             try:
                 with open(output_path, 'w', encoding='utf-8') as f:
                     if isinstance(questions, dict):
-                        import json
                         json.dump(questions, f, indent=2, ensure_ascii=False)
                     else:
                         f.write(str(questions))
@@ -93,6 +95,38 @@ def generate_research_questions(self, input_file: str = None, output_file: str =
                 'input_file': input_file,
                 'total_questions': len(questions) if isinstance(questions, list) else 0
             }
+
+        # Save research questions as downloadable JSON file
+        try:
+            file_repo = JobFileRepository()
+
+            # Create JSON content for download
+            json_content = json.dumps(result, indent=2, ensure_ascii=False).encode('utf-8')
+
+            # Generate filename
+            filename = f"research_questions_{current_task.request.id[:8]}.json"
+
+            # Save as downloadable file
+            file_repo.save_job_file(
+                task_id=current_task.request.id,
+                filename=filename,
+                file_data=json_content,
+                content_type='application/json',
+                file_type='output'
+            )
+
+            result['download_available'] = True
+            logger.info(f"Research questions saved for download: {filename}")
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error saving research questions for download: {e}")
+            result['download_available'] = False
+        except (OSError, PermissionError) as e:
+            logger.error(f"File system error saving research questions for download: {e}")
+            result['download_available'] = False
+        except Exception as e:
+            logger.error(f"Unexpected error saving research questions for download: {e}")
+            result['download_available'] = False
 
         logger.info(f"Research question generation completed successfully: {result}")
         return result
