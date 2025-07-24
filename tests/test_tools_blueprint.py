@@ -64,12 +64,6 @@ class TestToolsBlueprint:
             except Exception:
                 pass
 
-    def test_dashboard_route(self, client):
-        """Test tools dashboard route"""
-        response = client.get('/tools/')
-
-        assert response.status_code == 200
-        assert b'Tools Dashboard' in response.data
 
     def test_start_ocr_no_files_default_folder(self, client, mock_tasks, mock_job_file_repo):
         """Test starting OCR with no files uses default folder"""

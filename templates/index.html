@@ -2,7 +2,6 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
     <h2>Family Wiki Tools Dashboard</h2>
-    <a href="{{ url_for('tools.dashboard') }}" class="btn btn-primary">Go to Tools Dashboard</a>
 </div>
 
 <!-- System Status Section -->
@@ -49,54 +48,70 @@
     {% endif %}
 </div>
 
-<div class="tool-grid">
-    <div class="tool-card">
+<!-- Job Input Forms -->
+<div class="job-forms">
+    <div class="form-section">
         <h3>OCR Processing</h3>
         <p>Extract text from PDF files using OCR with rotation detection.</p>
-        <a href="{{ url_for('tools.dashboard') }}#ocr" class="btn btn-primary">Run OCR</a>
+        <form method="POST" action="{{ url_for('tools.start_ocr') }}" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdf_files">PDF Files:</label>
+                <input type="file" id="pdf_files" name="pdf_files" multiple accept=".pdf">
+                <small>Select PDF files to process, or leave blank to use default folder. For proper ordering, name files like: 001.pdf, 002.pdf, 003.pdf, etc.</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Start OCR Job</button>
+        </form>
     </div>
-    
-    <div class="tool-card">
-        <h3>Model Benchmarking</h3>
-        <p>Test multiple LLM models to find the best one for genealogy extraction.</p>
-        <a href="{{ url_for('tools.dashboard') }}#benchmark" class="btn btn-primary">Run Benchmark</a>
-    </div>
-    
-    <div class="tool-card{% if not system_status.extraction_ready %} tool-disabled{% endif %}">
-        <h3>LLM Extraction</h3>
+
+    <div class="form-section{% if not system_status.extraction_ready %} tool-disabled{% endif %}">
+        <h3>Genealogy Extraction</h3>
         <p>Extract genealogical data from text using AI language models with family-focused approach.</p>
         {% if system_status.extraction_ready %}
-            <a href="{{ url_for('tools.dashboard') }}#extraction" class="btn btn-primary">Run Extraction</a>
+            <form method="POST" action="{{ url_for('tools.start_extraction') }}" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="text_file">Text File (optional):</label>
+                    <input type="file" id="text_file" name="text_file" accept=".txt">
+                    <small>Upload a text file to extract from, or leave blank to use latest OCR results</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Start Extraction Job</button>
+            </form>
         {% else %}
-            <button class="btn btn-disabled" disabled title="Requires Ollama server and OCR data">Run Extraction (Unavailable)</button>
-            {% if not system_status.ollama.available %}
-                <p class="warning-text">⚠️ Requires Ollama server</p>
-            {% endif %}
-            {% if not system_status.text_data.available %}
-                <p class="warning-text">⚠️ Requires OCR data</p>
-            {% endif %}
+            <div class="form-group">
+                <button class="btn btn-disabled" disabled title="Requires Ollama server and OCR data">Start Extraction Job (Unavailable)</button>
+                {% if not system_status.ollama.available %}
+                    <p class="warning-text">⚠️ Requires Ollama server</p>
+                {% endif %}
+                {% if not system_status.text_data.available %}
+                    <p class="warning-text">⚠️ Requires OCR data</p>
+                {% endif %}
+            </div>
         {% endif %}
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
     </div>
-    
-    <div class="tool-card">
+
+    <div class="form-section">
         <h3>GEDCOM Generation</h3>
         <p>Generate standard GEDCOM files from extracted genealogy data.</p>
-        <a href="{{ url_for('tools.dashboard') }}#gedcom" class="btn btn-primary">Generate GEDCOM</a>
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
+        <form method="POST" action="{{ url_for('tools.start_gedcom') }}" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="gedcom_input_file">Input JSON File (optional):</label>
+                <input type="file" id="gedcom_input_file" name="input_file" accept=".json">
+                <small>Upload extraction results JSON file, or leave blank to use latest extraction results</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Start GEDCOM Job</button>
+        </form>
     </div>
-    
-    <div class="tool-card">
+
+    <div class="form-section">
         <h3>Research Questions</h3>
         <p>Generate intelligent research questions from your family data.</p>
-        <a href="{{ url_for('tools.dashboard') }}#research" class="btn btn-primary">Generate Questions</a>
-        <a href="{{ url_for('tools.dashboard') }}" class="btn btn-secondary">Tools Dashboard</a>
-    </div>
-    
-    <div class="tool-card">
-        <h3>CLI Tools Available</h3>
-        <p>Use Flask CLI commands for command-line access to all tools.</p>
-        <p><code>flask ocr</code>, <code>flask extract</code>, <code>flask gedcom</code>, <code>flask research</code>, <code>flask benchmark</code>, <code>flask pipeline</code></p>
+        <form method="POST" action="{{ url_for('tools.start_research') }}" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="research_input_file">Input JSON File (optional):</label>
+                <input type="file" id="research_input_file" name="input_file" accept=".json">
+                <small>Upload extraction results JSON file, or leave blank to use latest extraction results</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Start Research Job</button>
+        </form>
     </div>
 </div>
 {% endblock %}

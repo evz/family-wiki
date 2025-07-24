@@ -48,13 +48,6 @@ def safe_task_submit(task_func, task_name, *args, **kwargs):
         flash('An unexpected error occurred while starting the job', 'error')
         return None
 
-@tools_bp.route('/')
-def dashboard():
-    """Unified tools dashboard with job table and input forms"""
-    # Get job data - for now we'll return empty, but this could be expanded
-    # to inspect Redis for all tasks
-    jobs = []
-    return render_template('tools/dashboard.html', jobs=jobs)
 
 @tools_bp.route('/start-ocr', methods=['POST'])
 def start_ocr():
@@ -71,7 +64,7 @@ def start_ocr():
         if task:
             flash(f'OCR job started using default folder. Task ID: {task.id}', 'success')
             logger.info(f"Started OCR task: {task.id}")
-        return redirect(url_for('tools.dashboard'))
+        return redirect(url_for('main.index'))
 
     # Save uploaded files first
     try:
@@ -86,7 +79,7 @@ def start_ocr():
 
         if not saved_files:
             flash('No files were successfully uploaded', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         # Now start the task with the pre-generated task ID
         task = safe_task_submit(process_pdfs_ocr.apply_async, "OCR", task_id=task_id)
@@ -98,7 +91,7 @@ def start_ocr():
         logger.error(f"File system error saving uploaded files: {e}")
         flash('Error saving uploaded files - check disk space and permissions', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
 
 @tools_bp.route('/start-extraction', methods=['POST'])
 def start_extraction():
@@ -115,14 +108,14 @@ def start_extraction():
         if task:
             flash(f'Extraction job started using latest OCR results. Task ID: {task.id}', 'success')
             logger.info(f"Started extraction task: {task.id}")
-        return redirect(url_for('tools.dashboard'))
+        return redirect(url_for('main.index'))
 
     # Save uploaded file first
     try:
         file_id = file_repo.save_uploaded_file(text_file, task_id, 'extraction', 'input')
         if not file_id:
             flash('Failed to save uploaded text file', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         # Start the task with the pre-generated task ID
         task = safe_task_submit(extract_genealogy_data.apply_async, "extraction", task_id=task_id)
@@ -134,7 +127,7 @@ def start_extraction():
         logger.error(f"File system error saving uploaded extraction file: {e}")
         flash('Error saving uploaded file - check disk space and permissions', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
 
 @tools_bp.route('/start-gedcom', methods=['POST'])
 def start_gedcom():
@@ -151,14 +144,14 @@ def start_gedcom():
         if task:
             flash(f'GEDCOM generation job started using latest extraction results. Task ID: {task.id}', 'success')
             logger.info(f"Started GEDCOM task: {task.id}")
-        return redirect(url_for('tools.dashboard'))
+        return redirect(url_for('main.index'))
 
     # Save uploaded file first
     try:
         file_id = file_repo.save_uploaded_file(input_file, task_id, 'gedcom', 'input')
         if not file_id:
             flash('Failed to save uploaded input file', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         # Start the task with the pre-generated task ID
         task = safe_task_submit(generate_gedcom_file.apply_async, "GEDCOM", task_id=task_id)
@@ -170,7 +163,7 @@ def start_gedcom():
         logger.error(f"File system error saving uploaded GEDCOM file: {e}")
         flash('Error saving uploaded file - check disk space and permissions', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
 
 @tools_bp.route('/start-research', methods=['POST'])
 def start_research():
@@ -191,14 +184,14 @@ def start_research():
             logger.error(f"Failed to start research task: {e}")
             flash(f'Failed to start research job: {str(e)}', 'error')
 
-        return redirect(url_for('tools.dashboard'))
+        return redirect(url_for('main.index'))
 
     # Save uploaded file first
     try:
         file_id = file_repo.save_uploaded_file(input_file, task_id, 'research', 'input')
         if not file_id:
             flash('Failed to save uploaded input file', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         # Start the task with the pre-generated task ID
         task = generate_research_questions.apply_async(task_id=task_id)
@@ -210,7 +203,7 @@ def start_research():
         logger.error(f"Failed to start research task: {e}")
         flash(f'Failed to start research job: {str(e)}', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
 
 @tools_bp.route('/api/jobs')
 def api_jobs():
@@ -372,14 +365,14 @@ def cancel_job(task_id):
             if task.state in ['PENDING', 'RUNNING']:
                 task.revoke(terminate=True)
                 flash('Job cancelled successfully', 'success')
-                return redirect(url_for('tools.dashboard'))
+                return redirect(url_for('main.index'))
 
         flash('Job cannot be cancelled (not running)', 'error')
     except Exception as e:
         logger.error(f"Error cancelling task {task_id}: {e}")
         flash(f'Error cancelling job: {str(e)}', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
 
 @tools_bp.route('/download/<task_id>')
 def download_result(task_id):
@@ -392,7 +385,7 @@ def download_result(task_id):
 
         if not download_file:
             flash('No download available for this job', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         # Create a file-like object from the stored data
         from io import BytesIO
@@ -418,7 +411,7 @@ def download_result(task_id):
         logger.error(f"Unexpected error downloading result for task {task_id}: {e}", exc_info=True)
         flash('An unexpected error occurred while preparing the download', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
 
 @tools_bp.route('/research-questions/<task_id>')
 def view_research_questions(task_id):
@@ -429,22 +422,22 @@ def view_research_questions(task_id):
 
         if task.state == 'PENDING':
             flash('Research questions task is still pending', 'warning')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         if task.state == 'FAILURE':
             error_msg = str(task.result) if task.result else 'Unknown error'
             flash(f'Research questions task failed: {error_msg}', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         if task.state != 'SUCCESS':
             flash(f'Research questions task is still running (status: {task.state})', 'info')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         # Get the result data
         result = task.result
         if not result or not result.get('success'):
             flash('Research questions generation was not successful', 'error')
-            return redirect(url_for('tools.dashboard'))
+            return redirect(url_for('main.index'))
 
         questions = result.get('questions', [])
         input_file = result.get('input_file', 'Unknown')
@@ -466,4 +459,4 @@ def view_research_questions(task_id):
         logger.error(f"Unexpected error viewing research questions for task {task_id}: {e}", exc_info=True)
         flash('An unexpected error occurred while retrieving research questions', 'error')
 
-    return redirect(url_for('tools.dashboard'))
+    return redirect(url_for('main.index'))
