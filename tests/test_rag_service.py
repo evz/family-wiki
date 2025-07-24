@@ -7,6 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from web_app.database.models import QuerySession, SourceText, TextCorpus
+from web_app.services.exceptions import (
+    ExternalServiceError,
+    NotFoundError,
+    ServiceError,
+    ValidationError,
+)
 from web_app.services.rag_service import RAGService
 
 
@@ -121,9 +127,8 @@ class TestRAGService:
             mock_response.status_code = 500
             mock_post.return_value = mock_response
 
-            embedding = rag_service.generate_embedding("test text")
-
-            assert embedding is None
+            with pytest.raises(ExternalServiceError, match="Embedding generation failed with status 500"):
+                rag_service.generate_embedding("test text")
 
     @patch('requests.post')
     def test_generate_embedding_exception(self, mock_post, rag_service, app):
@@ -131,9 +136,8 @@ class TestRAGService:
         with app.app_context():
             mock_post.side_effect = Exception("Connection error")
 
-            embedding = rag_service.generate_embedding("test text")
-
-            assert embedding is None
+            with pytest.raises(ServiceError, match="Unexpected service error"):
+                rag_service.generate_embedding("test text")
 
     @patch.object(RAGService, 'generate_embedding')
     def test_store_source_text(self, mock_embedding, rag_service, app, db):
@@ -195,7 +199,7 @@ class TestRAGService:
     def test_store_source_text_invalid_corpus(self, rag_service, app, db):
         """Test storing text with invalid corpus ID"""
         with app.app_context():
-            with pytest.raises(ValueError, match="Corpus not found"):
+            with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
                 rag_service.store_source_text(
                     corpus_id="nonexistent-id",
                     filename="test.txt",
@@ -246,10 +250,8 @@ class TestRAGService:
             corpus = rag_service.create_corpus("Test Corpus")
             mock_exists.return_value = False
 
-            result = rag_service.load_pdf_text_files(str(corpus.id))
-
-            assert result['success'] is False
-            assert 'directory not found' in result['error']
+            with pytest.raises(NotFoundError, match="Extracted text directory not found"):
+                rag_service.load_pdf_text_files(str(corpus.id))
 
     def test_create_query_session(self, rag_service, app, db):
         """Test creating a query session"""
@@ -308,9 +310,8 @@ class TestRAGService:
         with app.app_context():
             mock_embedding.return_value = [0.1] * 1024
 
-            results = rag_service.semantic_search("test query")
-
-            assert len(results) == 0
+            with pytest.raises(NotFoundError, match="No active corpus available for search"):
+                rag_service.semantic_search("test query")
 
     @patch.object(RAGService, 'generate_embedding')
     def test_semantic_search_no_embedding(self, mock_embedding, rag_service, app, db):
@@ -319,12 +320,11 @@ class TestRAGService:
             corpus = rag_service.create_corpus("Test Corpus")
             mock_embedding.return_value = None
 
-            results = rag_service.semantic_search(
-                query_text="test query",
-                corpus_id=str(corpus.id)
-            )
-
-            assert len(results) == 0
+            with pytest.raises(ExternalServiceError, match="Failed to generate query embedding"):
+                rag_service.semantic_search(
+                    query_text="test query",
+                    corpus_id=str(corpus.id)
+                )
 
     def test_get_corpus_stats(self, rag_service, app, db):
         """Test getting corpus statistics"""
@@ -351,9 +351,8 @@ class TestRAGService:
     def test_get_corpus_stats_invalid_id(self, rag_service, app, db):
         """Test getting stats for invalid corpus ID"""
         with app.app_context():
-            stats = rag_service.get_corpus_stats("nonexistent-id")
-
-            assert stats == {}
+            with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
+                rag_service.get_corpus_stats("nonexistent-id")
 
     @patch.object(RAGService, 'semantic_search')
     @patch('requests.post')
@@ -392,12 +391,14 @@ class TestRAGService:
             assert query.similarity_scores == [0.85]
 
     @patch.object(RAGService, 'semantic_search')
-    def test_generate_rag_response_no_results(self, mock_search, rag_service, app, db):
+    @patch.object(RAGService, 'generate_embedding')
+    def test_generate_rag_response_no_results(self, mock_embedding, mock_search, rag_service, app, db):
         """Test RAG response when no search results found"""
         with app.app_context():
             corpus = rag_service.create_corpus("Test Corpus")
             session = rag_service.create_query_session(str(corpus.id), "Test Session")
 
+            mock_embedding.return_value = [0.1] * 1024
             mock_search.return_value = []
 
             query = rag_service.generate_rag_response(
@@ -411,7 +412,7 @@ class TestRAGService:
     def test_generate_rag_response_invalid_session(self, rag_service, app, db):
         """Test RAG response with invalid session ID"""
         with app.app_context():
-            with pytest.raises(ValueError, match="Session not found"):
+            with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
                 rag_service.generate_rag_response(
                     question="Test question",
                     session_id="nonexistent-id"
