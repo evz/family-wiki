@@ -104,7 +104,7 @@ class RAGService:
         if isinstance(corpus_id, str):
             corpus_id = uuid.UUID(corpus_id)
 
-        corpus = TextCorpus.query.get(corpus_id)
+        corpus = db.session.get(TextCorpus, corpus_id)
         if not corpus:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 
@@ -247,7 +247,7 @@ class RAGService:
         if isinstance(session_id, str):
             session_id = uuid.UUID(session_id)
 
-        session = QuerySession.query.get(session_id)
+        session = db.session.get(QuerySession, session_id)
         if not session:
             raise NotFoundError(f"Session not found: {session_id}")
 
@@ -340,7 +340,7 @@ ANSWER:"""
         if isinstance(corpus_id, str):
             corpus_id = uuid.UUID(corpus_id)
 
-        corpus = TextCorpus.query.get(corpus_id)
+        corpus = db.session.get(TextCorpus, corpus_id)
         if not corpus:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 

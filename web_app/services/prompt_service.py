@@ -28,7 +28,7 @@ class PromptService:
         """Get a prompt by its ID"""
         try:
             uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-            return ExtractionPrompt.query.get(uuid_obj)
+            return db.session.get(ExtractionPrompt, uuid_obj)
         except ValueError:
             logger.error(f"Invalid UUID format: {prompt_id}")
             return None
@@ -51,7 +51,7 @@ class PromptService:
         """Update an existing prompt"""
         try:
             uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-            prompt = ExtractionPrompt.query.get(uuid_obj)
+            prompt = db.session.get(ExtractionPrompt, uuid_obj)
             if not prompt:
                 return None
         except ValueError:
@@ -78,7 +78,7 @@ class PromptService:
             ExtractionPrompt.query.update({'is_active': False})
 
             # Activate the specified prompt
-            prompt = ExtractionPrompt.query.get(uuid_obj)
+            prompt = db.session.get(ExtractionPrompt, uuid_obj)
             if not prompt:
                 db.session.rollback()
                 return False
@@ -96,7 +96,7 @@ class PromptService:
         """Delete a prompt (cannot delete if it's the only one or if it's active)"""
         try:
             uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-            prompt = ExtractionPrompt.query.get(uuid_obj)
+            prompt = db.session.get(ExtractionPrompt, uuid_obj)
             if not prompt:
                 return False
         except ValueError:

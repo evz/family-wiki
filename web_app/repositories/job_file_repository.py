@@ -94,7 +94,7 @@ class JobFileRepository:
     def get_file_by_id(self, file_id):
         """Get file by ID"""
         try:
-            return JobFile.query.get(file_id)
+            return db.session.get(JobFile, file_id)
         except SQLAlchemyError as e:
             logger.error(f"Database error getting file by ID {file_id}: {e}")
             return None
