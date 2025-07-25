@@ -21,17 +21,6 @@ class TestRAGBlueprint:
     """Test RAG blueprint routes"""
 
     @pytest.fixture
-    def app(self):
-        """Create test Flask app"""
-        app = create_app(RAGBlueprintTestConfig())
-        return app
-
-    @pytest.fixture
-    def client(self, app):
-        """Create test client"""
-        return app.test_client()
-
-    @pytest.fixture
     def mock_rag_service_class(self):
         """Mock RAG service class"""
         with patch('web_app.blueprints.rag.RAGService') as mock_service_class:
@@ -306,7 +295,142 @@ class TestRAGBlueprint:
         # Verify the ID was converted to string
         mock_rag_instance.get_corpus_stats.assert_called_once_with("12345")
 
-    def test_blueprint_url_prefix(self, client):
+    def test_submit_query_success(self, db, client, mock_rag_service_class):
+        """Test successful query submission"""
+        # Mock active corpus
+        mock_corpus = Mock()
+        mock_corpus.id = "corpus-123"
+        
+        # Mock query session
+        mock_session = Mock()
+        mock_session.id = "session-456"
+        
+        # Mock query result
+        mock_query_result = Mock()
+        mock_query_result.retrieved_sources = ["source1", "source2"]
+        
+        # Configure mocks
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_active_corpus.return_value = mock_corpus
+        mock_rag_instance.create_query_session.return_value = mock_session
+        mock_rag_instance.generate_rag_response.return_value = mock_query_result
+        
+        # Submit query
+        response = client.post('/rag/submit-query', data={
+            'question': 'What is genealogy?',
+            'session_name': 'Test Session'
+        })
+        
+        # Should redirect to session detail
+        assert response.status_code == 302
+        assert '/rag/sessions/session-456' in response.location
+        
+        # Verify service calls
+        mock_rag_instance.get_active_corpus.assert_called_once()
+        mock_rag_instance.create_query_session.assert_called_once_with("corpus-123", "Test Session")
+        mock_rag_instance.generate_rag_response.assert_called_once_with("What is genealogy?", "session-456")
+
+    def test_submit_query_no_question(self, db, client):
+        """Test query submission without question"""
+        response = client.post('/rag/submit-query', data={
+            'session_name': 'Test Session'
+        })
+        
+        # Should redirect to index with error
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+
+    def test_submit_query_no_active_corpus(self, db, client, mock_rag_service_class):
+        """Test query submission when no active corpus exists"""
+        # Mock no active corpus
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_active_corpus.return_value = None
+        
+        response = client.post('/rag/submit-query', data={
+            'question': 'What is genealogy?'
+        })
+        
+        # Should redirect to index with error
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+
+    def test_submit_query_error_handling(self, db, client, mock_rag_service_class):
+        """Test error handling in query submission"""
+        from web_app.services.exceptions import ValidationError, NotFoundError, ConnectionError, TimeoutError, ExternalServiceError, DatabaseError
+        
+        # Mock active corpus
+        mock_corpus = Mock()
+        mock_corpus.id = "corpus-123"
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.get_active_corpus.return_value = mock_corpus
+        
+        # Test ValidationError
+        mock_rag_instance.create_query_session.side_effect = ValidationError("Invalid input")
+        response = client.post('/rag/submit-query', data={'question': 'test'})
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+        
+        # Test NotFoundError
+        mock_rag_instance.create_query_session.side_effect = NotFoundError("Not found")
+        response = client.post('/rag/submit-query', data={'question': 'test'})
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+        
+        # Test ConnectionError
+        mock_rag_instance.create_query_session.side_effect = ConnectionError("Connection failed")
+        response = client.post('/rag/submit-query', data={'question': 'test'})
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+        
+        # Test TimeoutError
+        mock_rag_instance.create_query_session.side_effect = TimeoutError("Timeout")
+        response = client.post('/rag/submit-query', data={'question': 'test'})
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+        
+        # Test ExternalServiceError
+        mock_rag_instance.create_query_session.side_effect = ExternalServiceError("Service error")
+        response = client.post('/rag/submit-query', data={'question': 'test'})
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+        
+        # Test DatabaseError
+        mock_rag_instance.create_query_session.side_effect = DatabaseError("DB error")
+        response = client.post('/rag/submit-query', data={'question': 'test'})
+        assert response.status_code == 302
+        assert '/rag/' in response.location
+
+    def test_get_or_create_session_helper(self, db, mock_rag_service_class):
+        """Test the _get_or_create_session helper function"""
+        import uuid
+        from web_app.blueprints.rag import _get_or_create_session
+        from web_app.database.models import QuerySession
+        
+        # Use a valid UUID for corpus_id
+        corpus_uuid = str(uuid.uuid4())
+        
+        # Create a test session in the database
+        existing_session = QuerySession(session_name="Existing Session", corpus_id=corpus_uuid)
+        db.session.add(existing_session)
+        db.session.commit()
+        
+        rag_service = mock_rag_service_class.return_value
+        
+        # Test getting existing session
+        result = _get_or_create_session(rag_service, corpus_uuid, "Existing Session")
+        assert result.session_name == "Existing Session"
+        rag_service.create_query_session.assert_not_called()
+        
+        # Test creating new session
+        new_session = Mock()
+        new_session.session_name = "New Session"
+        rag_service.create_query_session.return_value = new_session
+        
+        result = _get_or_create_session(rag_service, corpus_uuid, "New Session")
+        assert result == new_session
+        rag_service.create_query_session.assert_called_once_with(corpus_uuid, "New Session")
+
+    def test_blueprint_url_prefix(self, db, client):
         """Test that all routes have correct /rag prefix"""
         # Test that routes without /rag prefix return 404
         response = client.get('/')

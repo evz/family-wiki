@@ -146,7 +146,7 @@ class TestLLMGenealogyExtractor:
         result = extractor.query_ollama("Test prompt")
         assert result is None
 
-    def test_create_genealogy_prompt(self, app):
+    def test_create_genealogy_prompt(self, db):
         """Test genealogy prompt creation"""
         with patch.object(LLMGenealogyExtractor, 'check_ollama', return_value=False):
             extractor = LLMGenealogyExtractor()
@@ -154,9 +154,11 @@ class TestLLMGenealogyExtractor:
         text_chunk = "Jan van der Berg * 1850 Amsterdam"
         prompt = extractor.create_genealogy_prompt(text_chunk)
 
-        assert "Dutch genealogist" in prompt
+        # Test the fallback prompt since no active prompt exists in test DB
+        assert "Extract genealogical data from this Dutch text" in prompt
         assert text_chunk in prompt
         assert "families" in prompt
+        assert "isolated_individuals" in prompt
         assert "JSON" in prompt
 
     def test_split_text_intelligently_basic(self, app):

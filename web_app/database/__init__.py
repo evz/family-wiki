@@ -26,5 +26,9 @@ def init_app(app):
     db.init_app(app)
     migrate.init_app(app, db)
 
-    with app.app_context():
-        init_db()
+    # Import all models to ensure they're registered with SQLAlchemy
+    # This is especially important for testing where we use db.create_all()
+    from web_app.database import models  # noqa: F401
+
+    # Note: Database tables are now created via Flask-Migrate migrations
+    # Default prompts are loaded in the Docker entrypoint scripts

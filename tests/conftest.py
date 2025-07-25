@@ -109,6 +109,7 @@ def app():
 def db(app):
     """Create database for testing"""
     with app.app_context():
+        # Import all models to ensure they're registered with SQLAlchemy
         _db.create_all()
         yield _db
         _db.drop_all()
@@ -129,6 +130,7 @@ def clean_db(db):
             Event,
             ExtractionPrompt,
             Family,
+            JobFile,
             Marriage,
             OcrPage,
             Person,
@@ -150,6 +152,7 @@ def clean_db(db):
         Person.query.delete()
         Place.query.delete()
         OcrPage.query.delete()
+        JobFile.query.delete()
         ExtractionPrompt.query.delete()
 
         db.session.commit()

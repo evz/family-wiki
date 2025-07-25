@@ -22,8 +22,15 @@ app = create_app()
 app.app_context().push()
 from web_app.database import db
 try:
-    db.create_all()
-    print('Database tables created/verified!')
+    # Run database migrations
+    from flask_migrate import upgrade
+    upgrade()
+    print('Database migrations applied successfully!')
+    
+    # Load default prompts
+    from web_app.services.prompt_service import prompt_service
+    prompt_service.load_default_prompts()
+    print('Default prompts loaded!')
 except Exception as e:
     print(f'Database initialization error: {e}')
     exit(1)

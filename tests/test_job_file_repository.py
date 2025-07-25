@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from web_app.database import db
 from web_app.database.models import JobFile
 from web_app.repositories.job_file_repository import JobFileRepository
 
@@ -29,7 +28,7 @@ class TestJobFileRepository:
         return file
 
     @pytest.fixture
-    def sample_job_file(self, app):
+    def sample_job_file(self, db):
         """Create sample JobFile in database"""
         job_file = JobFile(
             filename="sample.txt",
@@ -44,7 +43,7 @@ class TestJobFileRepository:
         db.session.commit()
         return job_file
 
-    def test_save_uploaded_file_success(self, repository, mock_file, app):
+    def test_save_uploaded_file_success(self, repository, mock_file, db):
         """Test successful file upload save"""
         file_id = repository.save_uploaded_file(
             mock_file,
@@ -66,7 +65,7 @@ class TestJobFileRepository:
         assert job_file.job_type == "ocr"
         assert job_file.file_type == "input"
 
-    def test_save_uploaded_file_empty_file(self, repository, app):
+    def test_save_uploaded_file_empty_file(self, repository, db):
         """Test saving empty file returns None"""
         empty_file = Mock()
         empty_file.filename = ""
@@ -74,12 +73,12 @@ class TestJobFileRepository:
         result = repository.save_uploaded_file(empty_file, "task-123", "ocr", "input")
         assert result is None
 
-    def test_save_uploaded_file_no_file(self, repository, app):
+    def test_save_uploaded_file_no_file(self, repository, db):
         """Test saving None file returns None"""
         result = repository.save_uploaded_file(None, "task-123", "ocr", "input")
         assert result is None
 
-    def test_save_uploaded_file_no_content_type(self, repository, app):
+    def test_save_uploaded_file_no_content_type(self, repository, db):
         """Test file upload with no content type uses default"""
         file = Mock()
         file.filename = "test.txt"
@@ -92,7 +91,7 @@ class TestJobFileRepository:
         assert job_file.content_type == "application/octet-stream"
 
     @patch('web_app.repositories.job_file_repository.db.session')
-    def test_save_uploaded_file_database_error(self, mock_session, repository, mock_file, app):
+    def test_save_uploaded_file_database_error(self, mock_session, repository, mock_file, db):
         """Test database error during file save"""
         mock_session.commit.side_effect = SQLAlchemyError("Database error")
 
@@ -101,7 +100,7 @@ class TestJobFileRepository:
         assert result is None
         mock_session.rollback.assert_called_once()
 
-    def test_save_uploaded_file_read_error(self, repository, app):
+    def test_save_uploaded_file_read_error(self, repository, db):
         """Test file read error during upload"""
         file = Mock()
         file.filename = "test.pdf"
@@ -111,7 +110,7 @@ class TestJobFileRepository:
         result = repository.save_uploaded_file(file, "task-123", "ocr", "input")
         assert result is None
 
-    def test_save_result_file_string_content(self, repository, app):
+    def test_save_result_file_string_content(self, repository, db):
         """Test saving result file with string content"""
         file_id = repository.save_result_file(
             "result.txt",
@@ -129,7 +128,7 @@ class TestJobFileRepository:
         assert job_file.file_data == b"test result content"
         assert job_file.file_type == "output"
 
-    def test_save_result_file_bytes_content(self, repository, app):
+    def test_save_result_file_bytes_content(self, repository, db):
         """Test saving result file with bytes content"""
 
         content = b"binary result data"
@@ -144,7 +143,7 @@ class TestJobFileRepository:
         job_file = JobFile.query.get(file_id)
         assert job_file.file_data == content
 
-    def test_save_result_file_invalid_content_type(self, repository, app):
+    def test_save_result_file_invalid_content_type(self, repository, db):
         """Test saving result file with invalid content type"""
         result = repository.save_result_file(
             "result.txt",
@@ -157,7 +156,7 @@ class TestJobFileRepository:
         assert result is None
 
     @patch('web_app.repositories.job_file_repository.db.session')
-    def test_save_result_file_database_error(self, mock_session, repository, app):
+    def test_save_result_file_database_error(self, mock_session, repository, db):
         """Test database error during result file save"""
         mock_session.commit.side_effect = SQLAlchemyError("Database error")
 
@@ -168,7 +167,7 @@ class TestJobFileRepository:
         assert result is None
         mock_session.rollback.assert_called_once()
 
-    def test_get_file_by_id_success(self, repository, sample_job_file, app):
+    def test_get_file_by_id_success(self, repository, sample_job_file, db):
         """Test successful file retrieval by ID"""
         result = repository.get_file_by_id(sample_job_file.id)
 
@@ -176,27 +175,27 @@ class TestJobFileRepository:
         assert result.id == sample_job_file.id
         assert result.filename == "sample.txt"
 
-    def test_get_file_by_id_not_found(self, repository, app):
+    def test_get_file_by_id_not_found(self, repository, db):
         """Test file retrieval with non-existent ID"""
         result = repository.get_file_by_id(99999)
         assert result is None
 
     @patch('web_app.repositories.job_file_repository.JobFile.query')
-    def test_get_file_by_id_database_error(self, mock_query, repository, app):
+    def test_get_file_by_id_database_error(self, mock_query, repository, db):
         """Test database error during file retrieval"""
         mock_query.get.side_effect = SQLAlchemyError("Database error")
 
         result = repository.get_file_by_id(1)
         assert result is None
 
-    def test_get_files_by_task_id_success(self, repository, sample_job_file, app):
+    def test_get_files_by_task_id_success(self, repository, sample_job_file, db):
         """Test successful file retrieval by task ID"""
         files = repository.get_files_by_task_id("test-task-123")
 
         assert len(files) == 1
         assert files[0].id == sample_job_file.id
 
-    def test_get_files_by_task_id_with_file_type(self, repository, app):
+    def test_get_files_by_task_id_with_file_type(self, repository, db):
         """Test file retrieval by task ID and file type"""
         from web_app.database import db
 
@@ -220,13 +219,13 @@ class TestJobFileRepository:
         assert input_files[0].file_type == "input"
         assert output_files[0].file_type == "output"
 
-    def test_get_files_by_task_id_no_files(self, repository, app):
+    def test_get_files_by_task_id_no_files(self, repository, db):
         """Test file retrieval for non-existent task"""
         files = repository.get_files_by_task_id("non-existent-task")
         assert files == []
 
     @patch('web_app.repositories.job_file_repository.JobFile.query')
-    def test_get_files_by_task_id_database_error(self, mock_query, repository, app):
+    def test_get_files_by_task_id_database_error(self, mock_query, repository, db):
         """Test database error during files retrieval"""
         from sqlalchemy.exc import SQLAlchemyError
 
@@ -237,7 +236,7 @@ class TestJobFileRepository:
 
     @patch('tempfile.mkstemp')
     @patch('os.fdopen')
-    def test_create_temp_file_from_upload_success(self, mock_fdopen, mock_mkstemp, repository, sample_job_file, app):
+    def test_create_temp_file_from_upload_success(self, mock_fdopen, mock_mkstemp, repository, sample_job_file, db):
         """Test successful temporary file creation"""
         # Mock tempfile creation
         mock_mkstemp.return_value = (5, "/tmp/test123.txt")
@@ -250,20 +249,20 @@ class TestJobFileRepository:
         mock_mkstemp.assert_called_once_with(suffix=".txt")
         mock_file.write.assert_called_once_with(b"sample data")
 
-    def test_create_temp_file_from_upload_file_not_found(self, repository, app):
+    def test_create_temp_file_from_upload_file_not_found(self, repository, db):
         """Test temp file creation with non-existent file"""
         result = repository.create_temp_file_from_upload(99999)
         assert result is None
 
     @patch('tempfile.mkstemp')
-    def test_create_temp_file_from_upload_os_error(self, mock_mkstemp, repository, sample_job_file, app):
+    def test_create_temp_file_from_upload_os_error(self, mock_mkstemp, repository, sample_job_file, db):
         """Test OS error during temp file creation"""
         mock_mkstemp.side_effect = OSError("Permission denied")
 
         result = repository.create_temp_file_from_upload(sample_job_file.id)
         assert result is None
 
-    def test_create_temp_files_from_uploads_success(self, repository, app):
+    def test_create_temp_files_from_uploads_success(self, repository, db):
         """Test creating multiple temp files from uploads"""
         from web_app.database import db
 
@@ -287,7 +286,7 @@ class TestJobFileRepository:
             assert len(temp_files) == 3
             assert mock_create.call_count == 3
 
-    def test_create_temp_files_from_uploads_no_files(self, repository, app):
+    def test_create_temp_files_from_uploads_no_files(self, repository, db):
         """Test creating temp files when no files exist"""
         result = repository.create_temp_files_from_uploads("non-existent-task")
         assert result == []
@@ -325,7 +324,7 @@ class TestJobFileRepository:
             repository.cleanup_temp_files(["/tmp/non-existent.pdf"])
             mock_unlink.assert_not_called()
 
-    def test_get_download_file_success(self, repository, app):
+    def test_get_download_file_success(self, repository, db):
         """Test successful download file retrieval"""
         from web_app.database import db
 
@@ -343,12 +342,12 @@ class TestJobFileRepository:
         assert result.id == job_file.id
         assert result.file_type == "output"
 
-    def test_get_download_file_no_output_files(self, repository, app):
+    def test_get_download_file_no_output_files(self, repository, db):
         """Test download file retrieval when no output files exist"""
         result = repository.get_download_file("task-123", "ocr")
         assert result is None
 
-    def test_get_download_file_multiple_outputs(self, repository, app):
+    def test_get_download_file_multiple_outputs(self, repository, db):
         """Test download file retrieval with multiple output files"""
         from web_app.database import db
 
@@ -370,7 +369,7 @@ class TestJobFileRepository:
         assert result is not None
         assert result.filename == "output0.txt"
 
-    def test_get_download_file_database_error(self, repository, app):
+    def test_get_download_file_database_error(self, repository, db):
         """Test database error during download file retrieval"""
         # Mock the get_files_by_task_id method to raise an exception
         with patch.object(repository, 'get_files_by_task_id') as mock_get_files:

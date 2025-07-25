@@ -111,7 +111,7 @@ def submit_query():
 def _get_or_create_session(rag_service, corpus_id, session_name=None):
     """Helper function to get or create query session"""
     if session_name:
-        existing_session = QuerySession.query.filter_by(name=session_name).first()
+        existing_session = QuerySession.query.filter_by(session_name=session_name).first()
         if existing_session:
             return existing_session
 

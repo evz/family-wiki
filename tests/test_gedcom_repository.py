@@ -54,7 +54,7 @@ class TestGedcomRepository:
             'children_gedcom_ids': ['I3', 'I4', 'I5']
         }
 
-    def test_init_default_session(self, app):
+    def test_init_default_session(self, db):
         """Test repository initialization with default database session"""
         from web_app.database import db
         repository = GedcomRepository()
@@ -211,7 +211,7 @@ class TestGedcomRepository:
         assert family.marriage_place_id is None
         mock_db_session.add.assert_called_once_with(family)
 
-    def test_establish_family_relationships_complete(self, repository, sample_family_data, app):
+    def test_establish_family_relationships_complete(self, repository, sample_family_data, db):
         """Test establishing complete family relationships"""
         # Create mock family and persons
         family = Mock()
@@ -238,7 +238,7 @@ class TestGedcomRepository:
         assert family.mother == mother
         assert family.children == [child1, child2, child3]
 
-    def test_establish_family_relationships_partial(self, repository, app):
+    def test_establish_family_relationships_partial(self, repository, db):
         """Test establishing family relationships with missing persons"""
         family = Mock()
         father = Mock()
@@ -265,7 +265,7 @@ class TestGedcomRepository:
         # Note: Mock objects automatically create attributes, so we check call history instead
         assert family.children == [child1]
 
-    def test_establish_family_relationships_no_relationships(self, repository, app):
+    def test_establish_family_relationships_no_relationships(self, repository, db):
         """Test establishing family relationships with no relationship data"""
         family = Mock()
         family.children = []
@@ -285,7 +285,7 @@ class TestGedcomRepository:
         assert repository.get_or_create_place('') is None
         assert repository.get_or_create_place('   ') is None
 
-    def test_get_or_create_place_from_cache(self, repository, app):
+    def test_get_or_create_place_from_cache(self, repository, db):
         """Test get_or_create_place from cache"""
         place = Mock()
         place.id = str(uuid.uuid4())
@@ -297,7 +297,7 @@ class TestGedcomRepository:
         # Database should not be queried when place is in cache
         repository.db_session.query.assert_not_called()
 
-    def test_get_or_create_place_existing_in_db(self, repository, mock_db_session, app):
+    def test_get_or_create_place_existing_in_db(self, repository, mock_db_session, db):
         """Test get_or_create_place with existing place in database"""
         place = Mock()
         place.id = str(uuid.uuid4())
@@ -350,7 +350,7 @@ class TestGedcomRepository:
         assert 'New Place' in repository.place_cache
         assert repository.place_cache['New Place'] == added_place
 
-    def test_get_or_create_place_whitespace_trimmed(self, repository, mock_db_session, app):
+    def test_get_or_create_place_whitespace_trimmed(self, repository, mock_db_session, db):
         """Test that place names are trimmed"""
         place = Mock()
         place.id = str(uuid.uuid4())
@@ -377,7 +377,7 @@ class TestGedcomRepository:
         repository.rollback()
         mock_db_session.rollback.assert_called_once()
 
-    def test_integration_create_person_with_real_places(self, app):
+    def test_integration_create_person_with_real_places(self, db):
         """Integration test: create person with real database session"""
         from web_app.database import db
 
@@ -391,63 +391,61 @@ class TestGedcomRepository:
             'death_place': 'Amsterdam'  # Same place to test caching
         }
 
-        with app.app_context():
-            person = repository.create_person(person_data)
+        person = repository.create_person(person_data)
 
-            # Verify person was created
-            assert person.gedcom_id == 'I1'
-            assert person.given_names == 'Johannes'
-            assert person.surname == 'Smith'
+        # Verify person was created
+        assert person.gedcom_id == 'I1'
+        assert person.given_names == 'Johannes'
+        assert person.surname == 'Smith'
 
-            # Verify places were created and cached
-            assert person.birth_place_id is not None
-            assert person.death_place_id is not None
-            assert person.birth_place_id == person.death_place_id  # Same place
+        # Verify places were created and cached
+        assert person.birth_place_id is not None
+        assert person.death_place_id is not None
+        assert person.birth_place_id == person.death_place_id  # Same place
 
-            # Verify cache is populated
-            assert 'Amsterdam' in repository.place_cache
+        # Verify cache is populated
+        assert 'Amsterdam' in repository.place_cache
 
-            # Clean up
-            db.session.rollback()
+        # Clean up
+        db.session.rollback()
 
-    def test_integration_family_workflow(self, app):
+    def test_integration_family_workflow(self, db):
         """Integration test: complete family creation workflow"""
         from web_app.database import db
 
         repository = GedcomRepository()
 
-        with app.app_context():
-            # Create persons
-            father_data = {'gedcom_id': 'I1', 'given_names': 'Johannes', 'sex': 'M'}
-            mother_data = {'gedcom_id': 'I2', 'given_names': 'Maria', 'sex': 'F'}
-            child_data = {'gedcom_id': 'I3', 'given_names': 'Pieter', 'sex': 'M'}
+        # Create persons
+        father_data = {'gedcom_id': 'I1', 'given_names': 'Johannes', 'sex': 'M'}
+        mother_data = {'gedcom_id': 'I2', 'given_names': 'Maria', 'sex': 'F'}
+        child_data = {'gedcom_id': 'I3', 'given_names': 'Pieter', 'sex': 'M'}
 
-            father = repository.create_person(father_data)
-            mother = repository.create_person(mother_data)
-            child = repository.create_person(child_data)
+        father = repository.create_person(father_data)
+        mother = repository.create_person(mother_data)
+        child = repository.create_person(child_data)
 
-            # Create family
-            family_data = {
-                'gedcom_id': 'F1',
-                'marriage_date': '1875',
-                'marriage_place': 'Amsterdam',
-                'husband_gedcom_id': 'I1',
-                'wife_gedcom_id': 'I2',
-                'children_gedcom_ids': ['I3']
-            }
+        # Create family
+        family_data = {
+            'gedcom_id': 'F1',
+            'marriage_date': '1875',
+            'marriage_place': 'Amsterdam',
+            'husband_gedcom_id': 'I1',
+            'wife_gedcom_id': 'I2',
+            'children_gedcom_ids': ['I3']
+        }
 
-            family = repository.create_family(family_data)
+        family = repository.create_family(family_data)
 
-            # Establish relationships
-            person_lookup = {'I1': father, 'I2': mother, 'I3': child}
-            repository.establish_family_relationships(family, family_data, person_lookup)
+        # Establish relationships
+        person_lookup = {'I1': father, 'I2': mother, 'I3': child}
+        repository.establish_family_relationships(family, family_data, person_lookup)
 
-            # Verify family structure
-            assert family.family_identifier == 'F1'
-            assert family.marriage_date == '1875'
-            assert family.father == father
-            assert family.mother == mother
-            assert child in family.children
+        # Verify family structure
+        assert family.family_identifier == 'F1'
+        assert family.marriage_date == '1875'
+        assert family.father == father
+        assert family.mother == mother
+        assert child in family.children
 
-            # Clean up
-            db.session.rollback()
+        # Clean up
+        db.session.rollback()
