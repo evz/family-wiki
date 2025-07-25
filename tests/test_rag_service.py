@@ -39,7 +39,7 @@ class TestRAGService:
             assert corpus.chunk_overlap == 200
 
             # Verify it was saved to database
-            saved_corpus = TextCorpus.query.get(corpus.id)
+            saved_corpus = db.session.get(TextCorpus, corpus.id)
             assert saved_corpus is not None
             assert saved_corpus.name == "Test Corpus"
 
@@ -269,7 +269,7 @@ class TestRAGService:
             assert session.similarity_threshold == 0.7
 
             # Verify saved to database
-            saved_session = QuerySession.query.get(session.id)
+            saved_session = db.session.get(QuerySession, session.id)
             assert saved_session is not None
 
     @patch.object(RAGService, 'generate_embedding')

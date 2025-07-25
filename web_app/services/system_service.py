@@ -1,7 +1,7 @@
 """
 System status service for checking external dependencies
 """
-
+import os
 
 import requests
 
@@ -15,11 +15,13 @@ class SystemService:
 
     def __init__(self):
         self.logger = get_project_logger(__name__)
+        self.ollama_host = os.environ.get('OLLAMA_HOST', 'localhost')
+        self.ollama_port = os.environ.get('OLLAMA_PORT', '11434')
 
     def check_ollama_status(self) -> dict:
         """Check if Ollama server is running and return detailed status"""
         try:
-            response = requests.get("http://192.168.1.234:11434/api/tags", timeout=5)
+            response = requests.get(f"http://{self.ollama_host}:{self.ollama_port}/api/tags", timeout=5)
             if response.status_code == 200:
                 models = response.json().get('models', [])
                 model_names = [model.get('name', 'Unknown') for model in models]

@@ -7,7 +7,13 @@ echo "========================================"
 
 # Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL to be ready..."
-while ! pg_isready -h db -p 5432 -U family_wiki_user; do
+# Extract database connection details from DATABASE_URL
+DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+DB_USER=$(echo "$DATABASE_URL" | sed -n 's/.*\/\/\([^:]*\):.*/\1/p')
+
+echo "Connecting to database at ${DB_HOST}:${DB_PORT} as user ${DB_USER}"
+while ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
     echo "PostgreSQL is unavailable - sleeping for 3 seconds..."
     sleep 3
 done

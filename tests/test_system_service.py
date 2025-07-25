@@ -57,7 +57,7 @@ class TestSystemService:
         assert 'Ollama is running with 3 models available' in result['message']
 
         # Verify the correct API endpoint was called
-        mock_requests_get.assert_called_once_with("http://192.168.1.234:11434/api/tags", timeout=5)
+        mock_requests_get.assert_called_once_with("http://localhost:11434/api/tags", timeout=5)
 
     def test_check_ollama_status_success_no_models(self, service, mock_requests_get):
         """Test successful Ollama status check with no models"""

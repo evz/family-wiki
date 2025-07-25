@@ -86,8 +86,13 @@ flask run              # Visit http://localhost:5000
 
 **Docker Development:**
 ```bash
+make dev               # Start with mDNS resolution + host networking
+# OR
 docker-compose up      # Start PostgreSQL + web app
 # Visit http://localhost:5000
+
+# Note: All services use network_mode: host for mDNS resolution support
+# This allows seamless connection to external Ollama servers via .local hostnames
 ```
 
 ## Key Technical Notes
@@ -384,8 +389,8 @@ pip install pytest-flask==1.3.0
 - **Core Business Logic**: Complete and tested (85%+ coverage across all modules)
 - **Database Layer**: PostgreSQL with pgvector, full RAG capabilities, OCR storage
 - **Background Processing**: Celery tasks for OCR, extraction, GEDCOM, research questions
-- **Web Interface**: Flask blueprints with comprehensive test coverage
-- **Testing Infrastructure**: 598 tests passing (100% pass rate) with pytest-flask integration
+- **Web Interface**: Modular Flask blueprints with comprehensive test coverage
+- **Testing Infrastructure**: 598+ tests passing (100% pass rate) with pytest-flask integration
 
 **Key Features Implemented:**
 - ✅ **Database-Driven Prompts**: LLM prompts loaded from database with web management
@@ -394,3 +399,53 @@ pip install pytest-flask==1.3.0
 - ✅ **GEDCOM Generation**: Export to standard genealogy format
 - ✅ **RAG System**: Text chunking, embeddings, semantic search backend
 - ✅ **Entity Management**: Person/Family/Place browsing and management
+- ✅ **Modular Blueprint Architecture**: Clean separation of concerns with focused blueprints
+
+## Recent Development Progress (July 2025)
+
+**✅ COMPLETED: Blueprint Architecture Reorganization**
+
+**What was accomplished:**
+1. **Standardized Error Handling System** - Created comprehensive error handling with:
+   - Custom exception classes (`TaskSubmissionError`, `FileOperationError`)
+   - Safe operation functions (`safe_task_submit`, `safe_file_operation`, `safe_database_operation`)
+   - Decorator pattern (`@handle_blueprint_errors`) for consistent error responses
+   - Robust task status management (`get_task_status_safely`)
+
+2. **Blueprint Reorganization** - Split monolithic `tools.py` into focused blueprints:
+   - **`ocr_bp`** (`/ocr/`) - PDF OCR processing operations
+   - **`extraction_bp`** (`/extraction/`) - LLM genealogy data extraction  
+   - **`gedcom_bp`** (`/gedcom/`) - GEDCOM file generation
+   - **`research_bp`** (`/research/`) - Research questions generation + viewing
+   - **`jobs_bp`** (`/jobs/`) - Job management (status, cancellation, downloads)
+
+3. **Application Integration** - Complete Flask application updates:
+   - All blueprints properly registered in `app.py`
+   - Template forms updated to use new blueprint URLs
+   - Clean URL structure with logical prefixes
+
+4. **Comprehensive Testing** - Created functional test suite:
+   - 14 comprehensive functional tests covering real business logic
+   - File upload handling, task submission, error scenarios
+   - API response validation, job management workflows
+   - All tests passing with proper mocking of dependencies
+
+**Technical Benefits Achieved:**
+- **🎯 Single Responsibility**: Each blueprint has clear, focused purpose
+- **🛡️ Robust Error Handling**: Consistent patterns across all blueprints
+- **🧪 Well-Tested**: Functional tests verify actual behavior, not just existence
+- **🚀 Maintainable**: Much easier to work on specific features
+- **📦 Scalable**: Simple to add new blueprints for future features
+
+**Files Created/Updated:**
+- ✅ `web_app/blueprints/error_handling.py` - **NEW** - Standardized error handling system
+- ✅ `web_app/blueprints/research.py` - **NEW** - Research questions blueprint
+- ✅ `web_app/blueprints/jobs.py` - **NEW** - Jobs management blueprint
+- ✅ `web_app/blueprints/ocr.py` - Updated with new error handling
+- ✅ `web_app/blueprints/extraction.py` - Updated with new error handling  
+- ✅ `web_app/blueprints/gedcom.py` - Updated with new error handling
+- ✅ `app.py` - Updated blueprint registrations
+- ✅ `templates/index.html` - Updated form action URLs
+- ✅ `tests/test_blueprint_integration.py` - **NEW** - Comprehensive functional tests
+
+**Current Status:** The application now has a professional, modular blueprint architecture ready for continued development. All major reorganization and error handling standardization work is complete.

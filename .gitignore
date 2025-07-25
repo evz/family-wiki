@@ -48,6 +48,7 @@ logs/
 .env
 .env.local
 .env.*.local
+.env.ollama
 config.local.*
 
 # Temporary files

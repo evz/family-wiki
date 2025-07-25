@@ -5,7 +5,7 @@ help:
 	@echo "Family Wiki Docker Management"
 	@echo ""
 	@echo "Development Commands:"
-	@echo "  make dev          - Start development environment"
+	@echo "  make dev          - Start development environment (with mDNS resolution)"
 	@echo "  make build        - Build Docker images"
 	@echo "  make up           - Start services"
 	@echo "  make down         - Stop services"
@@ -31,6 +31,7 @@ help:
 	@echo "  make dev-logs-db  - Follow database logs"
 	@echo "  make build-web    - Build only web container"
 	@echo "  make build-db     - Pull database image"
+	@echo "  make test-mdns    - Test mDNS hostname resolution (reads from .env)"
 	@echo ""
 	@echo "Database Management:"
 	@echo "  make db-backup    - Create database backup"
@@ -40,8 +41,42 @@ help:
 	@echo "  make clean        - Clean up containers and volumes"
 	@echo "  make reset        - Reset everything (destructive!)"
 
+# Resolve mDNS hostname for Ollama host
+resolve-ollama-host:
+	@echo "Resolving Ollama host..."
+	@if [ -f .env ]; then \
+		OLLAMA_HOST=$$(grep "^OLLAMA_HOST=" .env 2>/dev/null | cut -d'=' -f2 | tr -d ' "'\'''); \
+		if [ -n "$$OLLAMA_HOST" ] && echo "$$OLLAMA_HOST" | grep -q "\.local$$"; then \
+			echo "Found mDNS hostname in .env: $$OLLAMA_HOST"; \
+			if command -v avahi-resolve >/dev/null 2>&1; then \
+				echo "Attempting to resolve $$OLLAMA_HOST using mDNS..."; \
+				RESOLVED_IP=$$(avahi-resolve -4 -n "$$OLLAMA_HOST" 2>/dev/null | awk '{print $$2}' | head -1); \
+				if [ -n "$$RESOLVED_IP" ] && [ "$$RESOLVED_IP" != "$$OLLAMA_HOST" ]; then \
+					echo "✅ Resolved $$OLLAMA_HOST to $$RESOLVED_IP"; \
+					echo "OLLAMA_HOST=$$RESOLVED_IP" > .env.ollama; \
+					OLLAMA_PORT=$$(grep "^OLLAMA_PORT=" .env 2>/dev/null | cut -d'=' -f2 | tr -d ' "'\'''); \
+					OLLAMA_MODEL=$$(grep "^OLLAMA_MODEL=" .env 2>/dev/null | cut -d'=' -f2 | tr -d ' "'\'''); \
+					[ -n "$$OLLAMA_PORT" ] && echo "OLLAMA_PORT=$$OLLAMA_PORT" >> .env.ollama; \
+					[ -n "$$OLLAMA_MODEL" ] && echo "OLLAMA_MODEL=$$OLLAMA_MODEL" >> .env.ollama; \
+				else \
+					echo "⚠️  Could not resolve $$OLLAMA_HOST, using original configuration"; \
+					rm -f .env.ollama; \
+				fi; \
+			else \
+				echo "⚠️  avahi-resolve not available, using original configuration"; \
+				rm -f .env.ollama; \
+			fi; \
+		else \
+			echo "OLLAMA_HOST is not an mDNS hostname (.local), no resolution needed"; \
+			rm -f .env.ollama; \
+		fi; \
+	else \
+		echo "No .env file found, skipping mDNS resolution"; \
+		rm -f .env.ollama; \
+	fi
+
 # Development environment
-dev: build-if-needed up-dev
+dev: resolve-ollama-host build-if-needed up-dev
 
 # Smart build - only build if images don't exist or build is forced
 build-if-needed:
@@ -59,9 +94,18 @@ build:
 
 up-dev:
 	@echo "Starting development environment..."
-	@if [ -f .env ]; then \
+	@ENV_FILES=""; \
+	if [ -f .env ]; then \
 		echo "Using .env configuration for local development"; \
-		docker compose --env-file .env up -d; \
+		ENV_FILES="--env-file .env"; \
+	fi; \
+	if [ -f .env.ollama ]; then \
+		echo "Using dynamically resolved Ollama configuration"; \
+		ENV_FILES="$$ENV_FILES --env-file .env.ollama"; \
+	fi; \
+	if [ -n "$$ENV_FILES" ]; then \
+		echo "Starting with environment files: $$ENV_FILES"; \
+		docker compose $$ENV_FILES up -d; \
 	else \
 		echo "Using default configuration (copy .env.example to .env for offline support)"; \
 		docker compose up -d; \
@@ -112,6 +156,8 @@ clean:
 	docker compose down
 	docker compose -f docker-compose.prod.yml down 2>/dev/null || true
 	docker system prune -f
+	@echo "Cleaning up dynamic configuration files..."
+	rm -f .env.ollama
 
 reset:
 	@echo "WARNING: This will delete all data! Press Ctrl+C to cancel."
@@ -168,6 +214,48 @@ build-web:
 build-db:
 	@echo "Pulling database image..."
 	@docker compose pull db
+
+# Test mDNS hostname resolution
+test-mdns:
+	@echo "Testing mDNS hostname resolution..."
+	@if [ -f .env ]; then \
+		OLLAMA_HOST=$$(grep "^OLLAMA_HOST=" .env 2>/dev/null | cut -d'=' -f2 | tr -d ' "'\'''); \
+		if [ -n "$$OLLAMA_HOST" ] && echo "$$OLLAMA_HOST" | grep -q "\.local$$"; then \
+			echo "Found mDNS hostname in .env: $$OLLAMA_HOST"; \
+			if command -v avahi-resolve >/dev/null 2>&1; then \
+				echo "✅ avahi-resolve is available"; \
+				echo "Attempting to resolve $$OLLAMA_HOST..."; \
+				RESOLVED_IP=$$(avahi-resolve -4 -n "$$OLLAMA_HOST" 2>/dev/null | awk '{print $$2}' | head -1); \
+				if [ -n "$$RESOLVED_IP" ] && [ "$$RESOLVED_IP" != "$$OLLAMA_HOST" ]; then \
+					echo "✅ SUCCESS: $$OLLAMA_HOST resolves to $$RESOLVED_IP"; \
+					echo "This IP will be used as OLLAMA_HOST when running 'make dev'"; \
+				else \
+					echo "❌ FAILED: Could not resolve $$OLLAMA_HOST"; \
+					echo "This could mean:"; \
+					echo "  - The target machine is not running"; \
+					echo "  - mDNS/Avahi is not working on the network"; \
+					echo "  - The hostname $$OLLAMA_HOST is not advertised"; \
+					echo "Development will fall back to original configuration"; \
+				fi; \
+			else \
+				echo "❌ avahi-resolve is not installed"; \
+				echo "Install with: sudo apt-get install avahi-utils (Ubuntu/Debian)"; \
+				echo "Development will fall back to original configuration"; \
+			fi; \
+		else \
+			if [ -n "$$OLLAMA_HOST" ]; then \
+				echo "OLLAMA_HOST in .env is '$$OLLAMA_HOST' (not an mDNS hostname)"; \
+				echo "mDNS resolution is only used for hostnames ending in .local"; \
+			else \
+				echo "No OLLAMA_HOST found in .env file"; \
+			fi; \
+			echo "No mDNS resolution needed - will use configuration as-is"; \
+		fi; \
+	else \
+		echo "❌ No .env file found"; \
+		echo "Create .env file (copy from .env.example) and set OLLAMA_HOST=your-hostname.local"; \
+		echo "to enable mDNS resolution"; \
+	fi
 
 # Fix script permissions if needed
 fix-permissions:

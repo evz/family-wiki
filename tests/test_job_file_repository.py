@@ -55,7 +55,7 @@ class TestJobFileRepository:
         assert file_id is not None
 
         # Verify file was saved to database
-        job_file = JobFile.query.get(file_id)
+        job_file = db.session.get(JobFile, file_id)
         assert job_file is not None
         assert job_file.filename == "test.pdf"
         assert job_file.content_type == "application/pdf"
@@ -87,7 +87,7 @@ class TestJobFileRepository:
 
         file_id = repository.save_uploaded_file(file, "task-123", "ocr", "input")
 
-        job_file = JobFile.query.get(file_id)
+        job_file = db.session.get(JobFile, file_id)
         assert job_file.content_type == "application/octet-stream"
 
     @patch('web_app.repositories.job_file_repository.db.session')
@@ -122,7 +122,7 @@ class TestJobFileRepository:
 
         assert file_id is not None
 
-        job_file = JobFile.query.get(file_id)
+        job_file = db.session.get(JobFile, file_id)
         assert job_file.filename == "result.txt"
         assert job_file.content_type == "text/plain"
         assert job_file.file_data == b"test result content"
@@ -140,7 +140,7 @@ class TestJobFileRepository:
             "extraction"
         )
 
-        job_file = JobFile.query.get(file_id)
+        job_file = db.session.get(JobFile, file_id)
         assert job_file.file_data == content
 
     def test_save_result_file_invalid_content_type(self, repository, db):
