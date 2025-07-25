@@ -9,10 +9,14 @@ from pathlib import Path
 from flask import Flask
 
 from web_app.blueprints.entities import entities
+from web_app.blueprints.extraction import extraction_bp
+from web_app.blueprints.gedcom import gedcom_bp
+from web_app.blueprints.jobs import jobs_bp
 from web_app.blueprints.main import main
+from web_app.blueprints.ocr import ocr_bp
 from web_app.blueprints.prompts import prompts_bp
 from web_app.blueprints.rag import rag
-from web_app.blueprints.tools import tools_bp
+from web_app.blueprints.research import research_bp
 from web_app.database import init_app as init_database
 from web_app.error_handlers import register_error_handlers
 
@@ -81,7 +85,11 @@ def create_app(config=None):
     # Register blueprints
     app.register_blueprint(main)
     app.register_blueprint(prompts_bp)
-    app.register_blueprint(tools_bp)
+    app.register_blueprint(ocr_bp)
+    app.register_blueprint(extraction_bp)
+    app.register_blueprint(gedcom_bp)
+    app.register_blueprint(research_bp)
+    app.register_blueprint(jobs_bp)
     app.register_blueprint(entities)
     app.register_blueprint(rag)
 

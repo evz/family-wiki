@@ -3,7 +3,7 @@ SQLAlchemy models for Family Wiki entities with proper relationships and RAG sup
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import UUID as POSTGRESQL_UUID
@@ -58,8 +58,8 @@ class TextCorpus(db.Model):
     embedding_model = db.Column(db.String(100), default='sentence-transformers/all-MiniLM-L6-v2')
     chunk_size = db.Column(db.Integer, default=1000)
     chunk_overlap = db.Column(db.Integer, default=200)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     text_chunks = db.relationship('SourceText', back_populates='corpus', cascade='all, delete-orphan')
@@ -94,8 +94,8 @@ class SourceText(db.Model):
     token_count = db.Column(db.Integer)
 
     # Metadata
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     corpus = db.relationship('TextCorpus', back_populates='text_chunks')
@@ -152,8 +152,8 @@ class QuerySession(db.Model):
     id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     corpus_id = db.Column(UUID(), db.ForeignKey('text_corpora.id'), nullable=False)
     session_name = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # RAG configuration for this session
     max_chunks = db.Column(db.Integer, default=5)  # How many chunks to retrieve
@@ -190,7 +190,7 @@ class Query(db.Model):
     error_message = db.Column(db.Text)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     completed_at = db.Column(db.DateTime)
 
     # Relationships
@@ -208,8 +208,8 @@ class ExtractionPrompt(db.Model):
     name = db.Column(db.String(255), nullable=False)
     prompt_text = db.Column(db.Text, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
     description = db.Column(db.Text)
 
     def __repr__(self):
@@ -244,8 +244,8 @@ class OcrPage(db.Model):
     error_message = db.Column(db.Text)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Ensure unique pages per batch
     __table_args__ = (
@@ -312,8 +312,8 @@ class Person(db.Model):
     # Extraction metadata
     extraction_chunk_id = db.Column(db.Integer)
     extraction_method = db.Column(db.String(50), default='llm')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     birth_place = db.relationship('Place', foreign_keys=[birth_place_id])
@@ -390,8 +390,8 @@ class Place(db.Model):
     historical_context = db.Column(db.Text)
 
     # Metadata
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     persons = db.relationship('Person', secondary=person_places, back_populates='places')
@@ -415,8 +415,8 @@ class Event(db.Model):
     # Metadata
     extraction_chunk_id = db.Column(db.Integer)
     extraction_method = db.Column(db.String(50), default='llm')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     place = db.relationship('Place', back_populates='events')
@@ -441,7 +441,7 @@ class Marriage(db.Model):
     notes = db.Column(db.Text)
 
     # Metadata
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
 
     # Relationships
     person1 = db.relationship('Person', foreign_keys=[person1_id], back_populates='marriages_as_person1')
@@ -481,8 +481,8 @@ class Family(db.Model):
     # Extraction metadata
     extraction_chunk_id = db.Column(db.Integer)
     extraction_method = db.Column(db.String(50), default='llm')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     father = db.relationship('Person', foreign_keys=[father_id], back_populates='families_as_father')
@@ -542,8 +542,8 @@ class Source(db.Model):
     confidence = db.Column(db.String(50))  # primary, secondary, etc.
 
     # Metadata
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     events = db.relationship('Event', secondary=event_sources, back_populates='sources')
@@ -569,7 +569,7 @@ class JobFile(db.Model):
     file_type = db.Column(db.String(20), nullable=False)  # input, output
 
     # Metadata
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
 
     def __repr__(self):
         return f'<JobFile {self.filename} ({self.job_type})>'
