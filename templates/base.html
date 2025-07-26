@@ -12,7 +12,30 @@
         <div class="header">
             <h1>Family Wiki - Genealogy Tools</h1>
             <nav>
-                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Dashboard</a>
+                <div class="nav-section">
+                    <span class="nav-label">Main</span>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint == 'main.index' }}">Dashboard</a>
+                </div>
+                
+                <div class="nav-section">
+                    <span class="nav-label">Processing Tools</span>
+                    <a href="{{ url_for('main.index') }}#ocr" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('ocr') }}">OCR</a>
+                    <a href="{{ url_for('main.index') }}#extraction" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('extraction') }}">Extraction</a>
+                    <a href="{{ url_for('main.index') }}#gedcom" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('gedcom') }}">GEDCOM</a>
+                    <a href="{{ url_for('main.index') }}#research" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('research') }}">Research</a>
+                </div>
+                
+                <div class="nav-section">
+                    <span class="nav-label">Data</span>
+                    <a href="{{ url_for('entities.index') }}" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('entities') }}">Entities</a>
+                    <a href="{{ url_for('rag.index') }}" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('rag') }}">RAG Search</a>
+                </div>
+                
+                <div class="nav-section">
+                    <span class="nav-label">Management</span>
+                    <a href="{{ url_for('prompts.list_prompts') }}" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('prompts') }}">Prompts</a>
+                    <a href="{{ url_for('main.index') }}#jobs" class="btn btn-nav {{ 'btn-nav-active' if request.endpoint and request.endpoint.startswith('jobs') }}">Jobs</a>
+                </div>
             </nav>
         </div>
         

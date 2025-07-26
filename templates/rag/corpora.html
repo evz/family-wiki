@@ -1,28 +1,63 @@
 {% extends "base.html" %}
 
-{% block title %}Text Corpora{% endblock %}
+{% block title %}Text Corpora - Family Wiki Tools{% endblock %}
 
 {% block content %}
-<div class="container">
-    <h1>Text Corpora</h1>
-    
-    {% if corpora %}
-        <div class="row">
-            {% for corpus in corpora %}
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">{{ corpus.name }}</h5>
-                            {% if corpus.description %}
-                                <p class="card-text">{{ corpus.description }}</p>
-                            {% endif %}
-                        </div>
+<div class="page-header">
+    <h2>Text Corpora</h2>
+    <p>Manage text corpora for RAG queries and semantic search</p>
+</div>
+
+<div class="tool-actions">
+    <a href="{{ url_for('rag.create_corpus') }}" class="btn btn-primary">Create New Corpus</a>
+    <a href="{{ url_for('rag.index') }}" class="btn btn-secondary">← Back to RAG</a>
+</div>
+
+{% if corpora %}
+    <div class="corpora-grid">
+        {% for corpus in corpora %}
+            <div class="corpus-card">
+                <div class="corpus-header">
+                    <h3>{{ corpus.name }}</h3>
+                    <div class="corpus-status status-{{ corpus.processing_status }}">
+                        {% if corpus.processing_status == 'ready' %}
+                            <span class="status-badge status-ready">✅ Ready</span>
+                        {% elif corpus.processing_status == 'processing' %}
+                            <span class="status-badge status-processing">⏳ Processing</span>
+                        {% elif corpus.processing_status == 'pending' %}
+                            <span class="status-badge status-pending">⏸️ Pending</span>
+                        {% elif corpus.processing_status == 'failed' %}
+                            <span class="status-badge status-failed">❌ Failed</span>
+                        {% endif %}
                     </div>
                 </div>
-            {% endfor %}
-        </div>
-    {% else %}
-        <p>No text corpora available.</p>
-    {% endif %}
-</div>
+                
+                {% if corpus.description %}
+                    <p class="corpus-description">{{ corpus.description }}</p>
+                {% endif %}
+                
+                <div class="corpus-stats">
+                    <div class="stat-item">
+                        <strong>Chunks:</strong> {{ corpus.chunk_count }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Created:</strong> {{ corpus.created_at.strftime('%Y-%m-%d') }}
+                    </div>
+                </div>
+                
+                {% if corpus.processing_error %}
+                    <div class="error-message">
+                        <strong>Processing Error:</strong> {{ corpus.processing_error }}
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="no-corpora">
+        <h3>No Text Corpora Found</h3>
+        <p>Create your first corpus by uploading a text file. Once processed, you'll be able to query it using semantic search.</p>
+        <a href="{{ url_for('rag.create_corpus') }}" class="btn btn-primary">Create Your First Corpus</a>
+    </div>
+{% endif %}
 {% endblock %}

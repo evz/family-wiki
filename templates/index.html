@@ -50,7 +50,7 @@
 
 <!-- Job Input Forms -->
 <div class="job-forms">
-    <div class="form-section">
+    <div class="form-section" id="ocr">
         <h3>OCR Processing</h3>
         <p>Extract text from PDF files using OCR with rotation detection.</p>
         <form method="POST" action="{{ url_for('ocr.start_ocr') }}" enctype="multipart/form-data">
@@ -63,7 +63,7 @@
         </form>
     </div>
 
-    <div class="form-section{% if not system_status.extraction_ready %} tool-disabled{% endif %}">
+    <div class="form-section{% if not system_status.extraction_ready %} tool-disabled{% endif %}" id="extraction">
         <h3>Genealogy Extraction</h3>
         <p>Extract genealogical data from text using AI language models with family-focused approach.</p>
         {% if system_status.extraction_ready %}
@@ -88,7 +88,7 @@
         {% endif %}
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="gedcom">
         <h3>GEDCOM Generation</h3>
         <p>Generate standard GEDCOM files from extracted genealogy data.</p>
         <form method="POST" action="{{ url_for('gedcom.start_gedcom') }}" enctype="multipart/form-data">
@@ -101,7 +101,7 @@
         </form>
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="research">
         <h3>Research Questions</h3>
         <p>Generate intelligent research questions from your family data.</p>
         <form method="POST" action="{{ url_for('research.start_research') }}" enctype="multipart/form-data">
@@ -112,6 +112,16 @@
             </div>
             <button type="submit" class="btn btn-primary">Start Research Job</button>
         </form>
+    </div>
+</div>
+
+<!-- Jobs Management Section -->
+<div class="job-management" id="jobs">
+    <h3>Background Jobs</h3>
+    <p>Monitor and manage running background tasks.</p>
+    <div class="jobs-placeholder">
+        <p><em>Job monitoring interface will be loaded here via JavaScript.</em></p>
+        <div id="jobs-table">Loading jobs...</div>
     </div>
 </div>
 {% endblock %}

@@ -77,8 +77,8 @@ class RAGService:
         return chunks
 
     @handle_service_exceptions(logger)
-    def generate_embedding(self, text: str) -> list[float] | None:
-        """Generate embedding for text using Ollama"""
+    def generate_embedding(self, text: str, embedding_model: str = "nomic-embed-text") -> list[float] | None:
+        """Generate embedding for text using Ollama with specified model"""
         ollama_host = current_app.config.get('OLLAMA_HOST', '192.168.1.234')
         ollama_port = current_app.config.get('OLLAMA_PORT', 11434)
         ollama_base_url = f"http://{ollama_host}:{ollama_port}"
@@ -86,7 +86,7 @@ class RAGService:
         response = requests.post(
             f"{ollama_base_url}/api/embeddings",
             json={
-                "model": "nomic-embed-text",  # Good embedding model
+                "model": embedding_model,  # Use specified embedding model
                 "prompt": text
             },
             timeout=30
@@ -129,8 +129,8 @@ class RAGService:
             if not chunk.strip():
                 continue
 
-            # Generate embedding
-            embedding = self.generate_embedding(chunk)
+            # Generate embedding using corpus's embedding model
+            embedding = self.generate_embedding(chunk, corpus.embedding_model)
             if not embedding:
                 self.logger.warning(f"Failed to generate embedding for chunk {i} of {filename}")
                 continue
@@ -144,7 +144,7 @@ class RAGService:
                 content=chunk,
                 content_hash=content_hash,
                 embedding=embedding,
-                embedding_model="nomic-embed-text",
+                embedding_model=corpus.embedding_model,  # Use corpus's embedding model
                 token_count=len(chunk.split())
             )
 
@@ -215,19 +215,27 @@ class RAGService:
     @handle_service_exceptions(logger)
     def semantic_search(self, query_text: str, corpus_id: str = None, limit: int = 5) -> list[tuple[SourceText, float]]:
         """Perform semantic search on source text"""
-        # Generate embedding for query
-        query_embedding = self.generate_embedding(query_text)
-        if not query_embedding:
-            raise ExternalServiceError("Failed to generate query embedding")
-
-        # Use active corpus if none specified
+        # Use active corpus if none specified, get corpus to determine embedding model
         if not corpus_id:
             corpus = self.get_active_corpus()
             if not corpus:
                 raise NotFoundError("No active corpus available for search")
             corpus_id = corpus.id
-        elif isinstance(corpus_id, str):
-            # Convert string UUID to UUID object if needed
+        else:
+            # Get corpus to determine embedding model
+            if isinstance(corpus_id, str):
+                corpus_id = uuid.UUID(corpus_id)
+            corpus = db.session.get(TextCorpus, corpus_id)
+            if not corpus:
+                raise NotFoundError(f"Corpus not found: {corpus_id}")
+
+        # Generate embedding for query using corpus's embedding model
+        query_embedding = self.generate_embedding(query_text, corpus.embedding_model)
+        if not query_embedding:
+            raise ExternalServiceError("Failed to generate query embedding")
+
+        # Ensure corpus_id is UUID object
+        if isinstance(corpus_id, str):
             corpus_id = uuid.UUID(corpus_id)
 
         # Search for similar chunks
@@ -260,8 +268,13 @@ class RAGService:
         db.session.add(query)
         db.session.flush()  # Get the ID
 
-        # Generate query embedding
-        query_embedding = self.generate_embedding(question)
+        # Get corpus to determine embedding model
+        corpus = db.session.get(TextCorpus, session.corpus_id)
+        if not corpus:
+            raise NotFoundError(f"Corpus not found: {session.corpus_id}")
+
+        # Generate query embedding using corpus's embedding model
+        query_embedding = self.generate_embedding(question, corpus.embedding_model)
         if query_embedding:
             query.question_embedding = query_embedding
 

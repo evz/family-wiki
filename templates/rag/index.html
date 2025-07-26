@@ -7,10 +7,27 @@
     <h1>RAG Query Interface</h1>
     
     <!-- Query Form Section -->
-    {% if active_corpus %}
+    {% if corpora %}
     <div class="query-section">
         <h3>Ask a Question</h3>
         <form id="rag-query-form" method="POST" action="{{ url_for('rag.submit_query') }}">
+            <div class="form-group">
+                <label for="corpus_selection">Select Corpus:</label>
+                <select id="corpus_selection" name="corpus_id" class="form-control" required>
+                    <option value="">Choose a corpus to query...</option>
+                    {% for corpus in corpora %}
+                        {% if corpus.processing_status == 'completed' %}
+                            <option value="{{ corpus.id }}" 
+                                    {% if active_corpus and corpus.id == active_corpus.id %}selected{% endif %}>
+                                {{ corpus.name }}
+                                {% if corpus.description %} - {{ corpus.description[:50] }}{% if corpus.description|length > 50 %}...{% endif %}{% endif %}
+                            </option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                <small class="form-help">Choose which corpus to search for answers to your question.</small>
+            </div>
+            
             <div class="form-group">
                 <label for="question">Question:</label>
                 <textarea id="question" name="question" class="form-control" rows="3" 
@@ -27,23 +44,49 @@
             
             <button type="submit" class="btn btn-primary">Submit Query</button>
         </form>
+        
+        <!-- Query Response Section -->
+        <div id="query-response" class="query-response" style="display: none; margin-top: 2rem;">
+            <div class="response-card">
+                <h4>Response</h4>
+                <div id="response-content" class="response-content"></div>
+                <div id="response-sources" class="response-sources"></div>
+            </div>
+        </div>
     </div>
+    {% else %}
+        <div class="alert alert-warning">
+            <strong>No Corpora Available</strong><br>
+            You need to create at least one corpus before you can ask questions. 
+            <a href="{{ url_for('rag.create_corpus') }}" class="btn btn-primary btn-sm">Create Corpus</a>
+        </div>
     {% endif %}
 
     <div class="row">
         <div class="col-md-6">
             <h3>Available Corpora</h3>
             {% if corpora %}
-                <ul class="list-group">
+                <div class="corpora-list">
                     {% for corpus in corpora %}
-                        <li class="list-group-item">
-                            {{ corpus.name }}
-                            {% if active_corpus and corpus.id == active_corpus.id %}
-                                <span class="badge badge-primary">Active</span>
+                        <div class="corpus-item" data-corpus-id="{{ corpus.id }}">
+                            <div class="corpus-name">
+                                {{ corpus.name }}
+                                <span class="status-badge status-{{ corpus.processing_status }}">
+                                    {{ corpus.processing_status.title() }}
+                                </span>
+                            </div>
+                            {% if corpus.description %}
+                                <div class="corpus-description">{{ corpus.description }}</div>
                             {% endif %}
-                        </li>
+                            <div class="corpus-meta">
+                                <small>Created: {{ corpus.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                {% if corpus.embedding_model %}
+                                    <small>Model: {{ corpus.embedding_model }}</small>
+                                {% endif %}
+                            </div>
+                        </div>
                     {% endfor %}
-                </ul>
+                </div>
             {% else %}
                 <p>No corpora available.</p>
             {% endif %}
@@ -54,21 +97,13 @@
         </div>
         
         <div class="col-md-6">
-            {% if active_corpus %}
-                <h3>Active Corpus: {{ active_corpus.name }}</h3>
-                {% if corpus_stats %}
-                    <ul class="list-unstyled">
-                        <li><strong>Total Chunks:</strong> {{ corpus_stats.total_chunks }}</li>
-                        <li><strong>Total Sources:</strong> {{ corpus_stats.total_sources }}</li>
-                        <li><strong>Avg Chunk Length:</strong> {{ corpus_stats.avg_chunk_length }}</li>
-                    </ul>
-                {% endif %}
-            {% else %}
-                <div class="alert alert-warning">
-                    <strong>No Active Corpus</strong><br>
-                    You need to have an active corpus to ask questions. Please check the corpus management page.
+            <h3>Corpus Details</h3>
+            <div id="corpus-details">
+                <div class="alert alert-info">
+                    <strong>Select a corpus</strong><br>
+                    Choose a corpus from the query form above to see detailed statistics and information.
                 </div>
-            {% endif %}
+            </div>
             
             <div class="mt-3">
                 <a href="{{ url_for('rag.sessions_list') }}" class="btn btn-secondary">View Query Sessions</a>
@@ -76,4 +111,98 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const corpusSelect = document.getElementById('corpus_selection');
+    const corpusDetails = document.getElementById('corpus-details');
+    const corpusItems = document.querySelectorAll('.corpus-item');
+    
+    // Corpus data from template
+    const corporaData = {
+        {% for corpus in corpora %}
+        '{{ corpus.id }}': {
+            name: '{{ corpus.name }}',
+            description: '{{ corpus.description|replace("'", "\\'") }}',
+            status: '{{ corpus.processing_status }}',
+            created: '{{ corpus.created_at.strftime("%Y-%m-%d %H:%M") }}',
+            embedding_model: '{{ corpus.embedding_model or "" }}'
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+    
+    function updateCorpusDetails(corpusId) {
+        if (!corpusId || !corporaData[corpusId]) {
+            corpusDetails.innerHTML = `
+                <div class="alert alert-info">
+                    <strong>Select a corpus</strong><br>
+                    Choose a corpus from the query form above to see detailed statistics and information.
+                </div>
+            `;
+            return;
+        }
+        
+        const corpus = corporaData[corpusId];
+        let statusClass = 'info';
+        if (corpus.status === 'completed') statusClass = 'success';
+        else if (corpus.status === 'failed') statusClass = 'danger';
+        else if (corpus.status === 'processing') statusClass = 'warning';
+        
+        corpusDetails.innerHTML = `
+            <h4>${corpus.name}</h4>
+            <div class="alert alert-${statusClass}">
+                <strong>Status:</strong> ${corpus.status.charAt(0).toUpperCase() + corpus.status.slice(1)}
+            </div>
+            ${corpus.description ? `<p><strong>Description:</strong> ${corpus.description}</p>` : ''}
+            <div class="corpus-stats">
+                <p><strong>Created:</strong> ${corpus.created}</p>
+                ${corpus.embedding_model ? `<p><strong>Embedding Model:</strong> ${corpus.embedding_model}</p>` : ''}
+                ${corpus.status === 'completed' ? `
+                    <p><em>Ready for queries</em></p>
+                ` : corpus.status === 'processing' ? `
+                    <p><em>Processing in background...</em></p>
+                ` : corpus.status === 'failed' ? `
+                    <p><em>Processing failed - check corpus management page</em></p>
+                ` : `
+                    <p><em>Pending processing</em></p>
+                `}
+            </div>
+        `;
+    }
+    
+    function updateCorpusSelection() {
+        // Remove previous selections
+        corpusItems.forEach(item => item.classList.remove('selected'));
+        
+        // Highlight selected corpus
+        const selectedId = corpusSelect.value;
+        if (selectedId) {
+            const selectedItem = document.querySelector(`[data-corpus-id="${selectedId}"]`);
+            if (selectedItem) {
+                selectedItem.classList.add('selected');
+            }
+        }
+        
+        updateCorpusDetails(selectedId);
+    }
+    
+    // Handle corpus selection dropdown change
+    if (corpusSelect) {
+        corpusSelect.addEventListener('change', updateCorpusSelection);
+        // Initialize with current selection
+        updateCorpusSelection();
+    }
+    
+    // Handle clicking on corpus items
+    corpusItems.forEach(item => {
+        item.addEventListener('click', function() {
+            const corpusId = this.dataset.corpusId;
+            if (corpusSelect) {
+                corpusSelect.value = corpusId;
+                updateCorpusSelection();
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

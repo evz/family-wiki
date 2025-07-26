@@ -55,6 +55,13 @@ class TextCorpus(db.Model):
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
+    
+    # Raw content and processing status
+    raw_content = db.Column(db.Text)  # Store uploaded file content
+    processing_status = db.Column(db.String(20), default='pending') # 'pending', 'processing', 'ready', 'failed'
+    processing_error = db.Column(db.Text)  # Store error message if processing fails
+    
+    # Embedding configuration
     embedding_model = db.Column(db.String(100), default='sentence-transformers/all-MiniLM-L6-v2')
     chunk_size = db.Column(db.Integer, default=1000)
     chunk_overlap = db.Column(db.Integer, default=200)

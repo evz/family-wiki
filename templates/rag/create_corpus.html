@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Create Text Corpus - Family Wiki Tools{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Create Text Corpus</h2>
+    <p>Upload a text file to create a new corpus for RAG queries</p>
+</div>
+
+<div class="tool-details">
+    <div class="tool-actions">
+        <a href="{{ url_for('rag.corpora_list') }}" class="btn btn-secondary">← Back to Corpora</a>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" class="corpus-form">
+        <div class="form-group">
+            <label for="name">Corpus Name *</label>
+            <input type="text" id="name" name="name" required maxlength="255" 
+                   placeholder="Enter a descriptive name for this corpus">
+            <small class="form-help">A short, descriptive name for this text corpus</small>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3" 
+                      placeholder="Optional description of the content and purpose"></textarea>
+            <small class="form-help">Describe what this corpus contains and its intended use</small>
+        </div>
+
+        <div class="form-group">
+            <label for="embedding_model">Embedding Model *</label>
+            <select id="embedding_model" name="embedding_model" required>
+                {% for model in available_models %}
+                    <option value="{{ model.id }}" 
+                            {% if model.id == 'nomic-embed-text' %}selected{% endif %}
+                            {% if not model.available %}class="model-unavailable"{% endif %}>
+                        {{ model.name }} 
+                        {% if not model.available %}(Not Available){% endif %}
+                        - {{ model.size }}, {{ model.speed }}
+                    </option>
+                {% endfor %}
+            </select>
+            <small class="form-help">Choose the embedding model for semantic search. This affects search quality and speed.</small>
+            
+            <!-- Model details section -->
+            <div class="model-details" id="model-details">
+                {% for model in available_models %}
+                    <div class="model-info" data-model="{{ model.id }}" style="display: none;">
+                        <div class="model-description">
+                            <strong>{{ model.name }}:</strong> {{ model.description }}
+                        </div>
+                        <div class="model-specs">
+                            <span class="spec"><strong>Best for:</strong> {{ model.use_cases }}</span>
+                            <span class="spec"><strong>Size:</strong> {{ model.size }}</span>
+                            <span class="spec"><strong>Speed:</strong> {{ model.speed }}</span>
+                        </div>
+                        {% if not model.available %}
+                            <div class="model-warning">
+                                ⚠️ This model is not currently available in your Ollama installation.
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="text_file">Text File *</label>
+            <input type="file" id="text_file" name="text_file" accept=".txt" required>
+            <small class="form-help">Upload a .txt file containing the text content for this corpus</small>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Create Corpus</button>
+            <a href="{{ url_for('rag.corpora_list') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<div class="tool-info">
+    <h3>How it works</h3>
+    <ul>
+        <li><strong>Upload:</strong> Select a UTF-8 encoded text file (.txt format)</li>
+        <li><strong>Model Selection:</strong> Choose an embedding model that fits your needs</li>
+        <li><strong>Processing:</strong> Text will be automatically chunked and processed for semantic search</li>
+        <li><strong>Embeddings:</strong> Vector embeddings will be generated for each text chunk using your selected model</li>
+        <li><strong>Ready:</strong> Once processing completes, you can query the corpus using RAG</li>
+    </ul>
+    
+    <h3>About Embedding Models</h3>
+    <p><strong>What are embeddings?</strong> Embeddings are numerical representations of text that capture semantic meaning. They allow the system to find text chunks that are similar in meaning to your questions, even if they don't use the exact same words.</p>
+    
+    <p><strong>Choosing a model:</strong></p>
+    <ul>
+        <li><strong>Quality vs Speed:</strong> Larger models generally provide better semantic understanding but are slower</li>
+        <li><strong>Consistency:</strong> Once you choose a model for a corpus, all queries must use the same model</li>
+        <li><strong>Language:</strong> Some models are optimized for specific languages (like English)</li>
+        <li><strong>Domain:</strong> Different models may work better for different types of documents</li>
+    </ul>
+    
+    <h3>File Requirements</h3>
+    <ul>
+        <li>File format: Plain text (.txt)</li>
+        <li>Encoding: UTF-8</li>
+        <li>Content: Non-empty text content</li>
+        <li>Size: Reasonable file size for processing</li>
+    </ul>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modelSelect = document.getElementById('embedding_model');
+    const modelInfos = document.querySelectorAll('.model-info');
+    
+    function showModelInfo() {
+        const selectedModel = modelSelect.value;
+        
+        // Hide all model info sections
+        modelInfos.forEach(info => {
+            info.style.display = 'none';
+        });
+        
+        // Show the selected model's info
+        const selectedInfo = document.querySelector(`[data-model="${selectedModel}"]`);
+        if (selectedInfo) {
+            selectedInfo.style.display = 'block';
+        }
+    }
+    
+    // Show initial model info
+    showModelInfo();
+    
+    // Update model info when selection changes
+    modelSelect.addEventListener('change', showModelInfo);
+});
+</script>
+{% endblock %}
