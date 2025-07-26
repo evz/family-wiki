@@ -23,7 +23,7 @@ echo "PostgreSQL is ready!"
 # Initialize database tables if needed
 echo "Initializing database tables..."
 python -c "
-from app import create_app
+from web_app import create_app
 app = create_app()
 app.app_context().push()
 from web_app.database import db

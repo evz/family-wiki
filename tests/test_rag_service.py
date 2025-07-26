@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from web_app.database.models import QuerySession, SourceText, TextCorpus
+from web_app.database.models import SourceText, TextCorpus
 from web_app.services.exceptions import (
     ExternalServiceError,
     NotFoundError,
@@ -127,7 +127,7 @@ class TestRAGService:
             mock_response.status_code = 500
             mock_post.return_value = mock_response
 
-            with pytest.raises(ExternalServiceError, match="Embedding generation failed with status 500"):
+            with pytest.raises(ExternalServiceError, match="Ollama request to api/embeddings failed with status 500"):
                 rag_service.generate_embedding("test text")
 
     @patch('requests.post')
@@ -253,24 +253,6 @@ class TestRAGService:
             with pytest.raises(NotFoundError, match="Extracted text directory not found"):
                 rag_service.load_pdf_text_files(str(corpus.id))
 
-    def test_create_query_session(self, rag_service, app, db):
-        """Test creating a query session"""
-        with app.app_context():
-            corpus = rag_service.create_corpus("Test Corpus")
-
-            session = rag_service.create_query_session(
-                corpus_id=str(corpus.id),
-                session_name="Test Session"
-            )
-
-            assert session.session_name == "Test Session"
-            assert session.corpus_id == corpus.id
-            assert session.max_chunks == 5
-            assert session.similarity_threshold == 0.7
-
-            # Verify saved to database
-            saved_session = db.session.get(QuerySession, session.id)
-            assert saved_session is not None
 
     @patch.object(RAGService, 'generate_embedding')
     def test_semantic_search(self, mock_embedding, rag_service, app, db):
@@ -354,66 +336,5 @@ class TestRAGService:
             with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
                 rag_service.get_corpus_stats("nonexistent-id")
 
-    @patch.object(RAGService, 'semantic_search')
-    @patch('requests.post')
-    def test_generate_rag_response(self, mock_post, mock_search, rag_service, app, db):
-        """Test RAG response generation"""
-        with app.app_context():
-            corpus = rag_service.create_corpus("Test Corpus")
-            session = rag_service.create_query_session(str(corpus.id), "Test Session")
 
-            # Mock search results
-            mock_chunk = Mock()
-            mock_chunk.id = "chunk-id"
-            mock_chunk.filename = "test.txt"
-            mock_chunk.page_number = 1
-            mock_chunk.content = "This is about genealogy."
-            mock_search.return_value = [(mock_chunk, 0.85)]
 
-            # Mock LLM response
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {
-                'response': 'This is a genealogy document about family history.'
-            }
-            mock_post.return_value = mock_response
-
-            # Generate response
-            query = rag_service.generate_rag_response(
-                question="What is this document about?",
-                session_id=str(session.id)
-            )
-
-            assert query.question == "What is this document about?"
-            assert query.answer == "This is a genealogy document about family history."
-            assert query.status == "completed"
-            assert query.retrieved_chunks == ["chunk-id"]
-            assert query.similarity_scores == [0.85]
-
-    @patch.object(RAGService, 'semantic_search')
-    @patch.object(RAGService, 'generate_embedding')
-    def test_generate_rag_response_no_results(self, mock_embedding, mock_search, rag_service, app, db):
-        """Test RAG response when no search results found"""
-        with app.app_context():
-            corpus = rag_service.create_corpus("Test Corpus")
-            session = rag_service.create_query_session(str(corpus.id), "Test Session")
-
-            mock_embedding.return_value = [0.1] * 1024
-            mock_search.return_value = []
-
-            query = rag_service.generate_rag_response(
-                question="What is this about?",
-                session_id=str(session.id)
-            )
-
-            assert query.status == "completed"
-            assert "couldn't find relevant information" in query.answer
-
-    def test_generate_rag_response_invalid_session(self, rag_service, app, db):
-        """Test RAG response with invalid session ID"""
-        with app.app_context():
-            with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
-                rag_service.generate_rag_response(
-                    question="Test question",
-                    session_id="nonexistent-id"
-                )

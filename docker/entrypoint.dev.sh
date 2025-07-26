@@ -23,7 +23,7 @@ echo "PostgreSQL is ready!"
 # Initialize database tables if needed
 echo "Initializing database tables..."
 python -c "
-from app import create_app
+from web_app import create_app
 app = create_app()
 app.app_context().push()
 from web_app.database import db
@@ -48,4 +48,4 @@ echo "Application will be available at http://localhost:5000"
 echo "========================================"
 
 # Start Flask in debug mode with hot reload
-exec flask run --host=0.0.0.0 --debug
+exec flask --app web_app run --host=0.0.0.0 --debug

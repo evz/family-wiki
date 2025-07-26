@@ -10,13 +10,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.services.gedcom_service import gedcom_service
 from web_app.shared.logging_config import get_project_logger
-from web_app.tasks.celery_app import celery_app
+from web_app.tasks.celery_app import celery
 
 
 logger = get_project_logger(__name__)
 
 
-@celery_app.task(bind=True, autoretry_for=(FileNotFoundError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=(FileNotFoundError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
 def generate_gedcom_file(self, input_file: str = None, output_file: str = None):
     """
     Generate GEDCOM file from extracted genealogy data

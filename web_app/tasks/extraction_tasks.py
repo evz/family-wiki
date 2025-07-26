@@ -11,7 +11,7 @@ from web_app.pdf_processing.llm_genealogy_extractor import LLMGenealogyExtractor
 from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.services.prompt_service import PromptService
 from web_app.shared.logging_config import get_project_logger
-from web_app.tasks.celery_app import celery_app
+from web_app.tasks.celery_app import celery
 
 
 logger = get_project_logger(__name__)
@@ -212,7 +212,7 @@ class ExtractionTaskManager:
         return total_people
 
 
-@celery_app.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
 def extract_genealogy_data(self, text_file: str = None):
     """
     Extract genealogy data from text using LLM

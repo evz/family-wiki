@@ -121,7 +121,7 @@ down:
 	@echo "Stopping services..."
 	docker compose down
 
-restart: down up
+restart: down dev
 
 logs:
 	docker compose logs -f

@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from app import Config
+from web_app import Config
 
 
 class TestConfig:

@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app import create_app
 from tests.conftest import BaseTestConfig
+from web_app import create_app
 
 
 class EntitiesBlueprintTestConfig(BaseTestConfig):

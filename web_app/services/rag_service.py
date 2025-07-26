@@ -10,7 +10,7 @@ import requests
 from flask import current_app
 
 from web_app.database import db
-from web_app.database.models import Query, QuerySession, SourceText, TextCorpus
+from web_app.database.models import ExtractionPrompt, SourceText, TextCorpus
 from web_app.services.exceptions import (
     ExternalServiceError,
     NotFoundError,
@@ -28,6 +28,64 @@ class RAGService:
     def __init__(self):
         self.logger = get_project_logger(__name__)
 
+    def _get_ollama_config(self):
+        """Get Ollama server configuration from Flask config"""
+        return {
+            'host': current_app.config.get('OLLAMA_HOST', '192.168.1.234'),
+            'port': current_app.config.get('OLLAMA_PORT', 11434),
+            'model': current_app.config.get('OLLAMA_MODEL', 'aya:35b-23'),
+            'base_url': f"http://{current_app.config.get('OLLAMA_HOST', '192.168.1.234')}:{current_app.config.get('OLLAMA_PORT', 11434)}"
+        }
+
+    def _make_ollama_request(self, endpoint, payload, timeout=30):
+        """Make a request to Ollama server with error handling"""
+        config = self._get_ollama_config()
+        url = f"{config['base_url']}/{endpoint}"
+
+        try:
+            response = requests.post(url, json=payload, timeout=timeout)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise ExternalServiceError(f"Ollama request to {endpoint} failed with status {response.status_code}")
+        except requests.RequestException as e:
+            raise ExternalServiceError(f"Failed to connect to Ollama server: {str(e)}") from e
+
+    def _get_prompt_by_id(self, prompt_id: str, expected_type: str = None) -> ExtractionPrompt:
+        """Get a prompt by ID, optionally validate type"""
+        if isinstance(prompt_id, str):
+            try:
+                prompt_id = uuid.UUID(prompt_id)
+            except ValueError as e:
+                raise NotFoundError(f"Invalid prompt ID format: {prompt_id}") from e
+
+        prompt = db.session.get(ExtractionPrompt, prompt_id)
+        if not prompt:
+            raise NotFoundError(f"Prompt not found: {prompt_id}")
+
+        if expected_type and prompt.prompt_type != expected_type:
+            raise NotFoundError(f"Prompt {prompt_id} is type '{prompt.prompt_type}', expected '{expected_type}'")
+
+        return prompt
+
+    def _generate_llm_response(self, prompt: str, model: str = None, temperature: float = 0.3) -> str:
+        """Generate a response from Ollama LLM"""
+        config = self._get_ollama_config()
+        model = model or config['model']
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "top_p": 0.9
+            }
+        }
+
+        response = self._make_ollama_request("api/generate", payload, timeout=120)
+        return response.get('response', 'No response generated')
+
     @handle_service_exceptions(logger)
     def create_corpus(self, name: str, description: str = "") -> TextCorpus:
         """Create a new text corpus"""
@@ -44,12 +102,16 @@ class RAGService:
     @handle_service_exceptions(logger)
     def get_active_corpus(self) -> TextCorpus | None:
         """Get the currently active corpus"""
-        return TextCorpus.query.filter_by(is_active=True).first()
+        return db.session.execute(
+            db.select(TextCorpus).filter_by(is_active=True)
+        ).scalar_one_or_none()
 
     @handle_service_exceptions(logger)
     def get_all_corpora(self) -> list[TextCorpus]:
         """Get all text corpora"""
-        return TextCorpus.query.order_by(TextCorpus.created_at.desc()).all()
+        return db.session.execute(
+            db.select(TextCorpus).order_by(TextCorpus.created_at.desc())
+        ).scalars().all()
 
     @handle_service_exceptions(logger)
     def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
@@ -79,23 +141,13 @@ class RAGService:
     @handle_service_exceptions(logger)
     def generate_embedding(self, text: str, embedding_model: str = "nomic-embed-text") -> list[float] | None:
         """Generate embedding for text using Ollama with specified model"""
-        ollama_host = current_app.config.get('OLLAMA_HOST', '192.168.1.234')
-        ollama_port = current_app.config.get('OLLAMA_PORT', 11434)
-        ollama_base_url = f"http://{ollama_host}:{ollama_port}"
+        payload = {
+            "model": embedding_model,
+            "prompt": text
+        }
 
-        response = requests.post(
-            f"{ollama_base_url}/api/embeddings",
-            json={
-                "model": embedding_model,  # Use specified embedding model
-                "prompt": text
-            },
-            timeout=30
-        )
-
-        if response.status_code == 200:
-            return response.json().get('embedding')
-        else:
-            raise ExternalServiceError(f"Embedding generation failed with status {response.status_code}")
+        response = self._make_ollama_request("api/embeddings", payload, timeout=30)
+        return response.get('embedding')
 
     @handle_service_exceptions(logger)
     def store_source_text(self, corpus_id: str, filename: str, content: str, page_number: int = None) -> int:
@@ -112,10 +164,12 @@ class RAGService:
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
         # Check if this content already exists
-        existing = SourceText.query.filter_by(
-            corpus_id=corpus_id,
-            content_hash=content_hash
-        ).first()
+        existing = db.session.execute(
+            db.select(SourceText).filter_by(
+                corpus_id=corpus_id,
+                content_hash=content_hash
+            )
+        ).scalar_one_or_none()
 
         if existing:
             self.logger.info(f"Content already exists for {filename}:{page_number}")
@@ -197,20 +251,6 @@ class RAGService:
             'chunks_stored': total_chunks
         }
 
-    @handle_service_exceptions(logger)
-    def create_query_session(self, corpus_id: str, session_name: str = None) -> QuerySession:
-        """Create a new query session"""
-        # Convert string UUID to UUID object if needed
-        if isinstance(corpus_id, str):
-            corpus_id = uuid.UUID(corpus_id)
-
-        session = QuerySession(
-            corpus_id=corpus_id,
-            session_name=session_name or f"Session {QuerySession.query.count() + 1}"
-        )
-        db.session.add(session)
-        db.session.commit()
-        return session
 
     @handle_service_exceptions(logger)
     def semantic_search(self, query_text: str, corpus_id: str = None, limit: int = 5) -> list[tuple[SourceText, float]]:
@@ -249,47 +289,51 @@ class RAGService:
         return results
 
     @handle_service_exceptions(logger)
-    def generate_rag_response(self, question: str, session_id: str) -> Query:
-        """Generate a response using RAG (Retrieval-Augmented Generation)"""
-        # Convert string UUID to UUID object if needed
-        if isinstance(session_id, str):
-            session_id = uuid.UUID(session_id)
+    def ask_question(self, question: str, prompt_id: str, corpus_id: str = None, max_chunks: int = 5) -> dict:
+        """
+        Simplified RAG query that bypasses QuerySession complexity
 
-        session = db.session.get(QuerySession, session_id)
-        if not session:
-            raise NotFoundError(f"Session not found: {session_id}")
+        Args:
+            question: The question to ask
+            prompt_id: RAG prompt to use (required)
+            corpus_id: ID of corpus to search (uses active if None)
+            max_chunks: Maximum number of chunks to retrieve
 
-        # Create query record
-        query = Query(
-            session_id=session_id,
-            question=question,
-            status='processing'
-        )
-        db.session.add(query)
-        db.session.flush()  # Get the ID
-
-        # Get corpus to determine embedding model
-        corpus = db.session.get(TextCorpus, session.corpus_id)
-        if not corpus:
-            raise NotFoundError(f"Corpus not found: {session.corpus_id}")
-
-        # Generate query embedding using corpus's embedding model
-        query_embedding = self.generate_embedding(question, corpus.embedding_model)
-        if query_embedding:
-            query.question_embedding = query_embedding
+        Returns:
+            dict: Contains answer, retrieved_chunks, similarity_scores, and metadata
+        """
+        # Use active corpus if none specified
+        if not corpus_id:
+            corpus = self.get_active_corpus()
+            if not corpus:
+                raise NotFoundError("No active corpus available for search")
+            corpus_id = corpus.id
+        else:
+            # Validate corpus exists
+            if isinstance(corpus_id, str):
+                corpus_id = uuid.UUID(corpus_id)
+            corpus = db.session.get(TextCorpus, corpus_id)
+            if not corpus:
+                raise NotFoundError(f"Corpus not found: {corpus_id}")
 
         # Perform semantic search
         search_results = self.semantic_search(
             query_text=question,
-            corpus_id=session.corpus_id,
-            limit=session.max_chunks
+            corpus_id=corpus_id,
+            limit=max_chunks
         )
 
         if not search_results:
-            query.status = 'completed'
-            query.answer = "I couldn't find relevant information in the source documents to answer your question."
-            db.session.commit()
-            return query
+            return {
+                'answer': "I couldn't find relevant information in the source documents to answer your question.",
+                'retrieved_chunks': [],
+                'similarity_scores': [],
+                'corpus_name': corpus.name,
+                'question': question
+            }
+
+        # Get RAG prompt from database
+        rag_prompt = self._get_prompt_by_id(prompt_id, 'rag')
 
         # Prepare context from search results
         context_chunks = []
@@ -297,54 +341,30 @@ class RAGService:
         similarity_scores = []
 
         for chunk, similarity in search_results:
-            context_chunks.append(f"Source: {chunk.filename}:{chunk.page_number}\n{chunk.content}")
+            context_chunks.append(f"Source: {chunk.filename}:{chunk.page_number}\\n{chunk.content}")
             chunk_ids.append(str(chunk.id))
             similarity_scores.append(similarity)
 
-        context = "\n\n---\n\n".join(context_chunks)
+        context = "\\n\\n---\\n\\n".join(context_chunks)
 
-        # Create RAG prompt
-        rag_prompt = f"""Based on the following source documents, please answer the question. If the information is not in the sources, say so.
-
-QUESTION: {question}
-
-SOURCES:
-{context}
-
-ANSWER:"""
-
-        # Generate response using Ollama
-        ollama_host = current_app.config.get('OLLAMA_HOST', '192.168.1.234')
-        ollama_port = current_app.config.get('OLLAMA_PORT', 11434)
-        ollama_model = current_app.config.get('OLLAMA_MODEL', 'aya:35b-23')
-        ollama_base_url = f"http://{ollama_host}:{ollama_port}"
-
-        response = requests.post(
-            f"{ollama_base_url}/api/generate",
-            json={
-                "model": ollama_model,
-                "prompt": rag_prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.3,
-                    "top_p": 0.9
-                }
-            },
-            timeout=120
+        # Format the prompt using template variables
+        formatted_prompt = rag_prompt.prompt_text.format(
+            question=question,
+            context=context
         )
 
-        if response.status_code == 200:
-            answer = response.json().get('response', 'No response generated')
-            query.answer = answer
-            query.status = 'completed'
-            query.ollama_model = ollama_model
-            query.retrieved_chunks = chunk_ids
-            query.similarity_scores = similarity_scores
-        else:
-            raise ExternalServiceError(f"LLM request failed with status {response.status_code}")
+        # Generate response using Ollama
+        answer = self._generate_llm_response(formatted_prompt)
 
-        db.session.commit()
-        return query
+        return {
+            'answer': answer,
+            'retrieved_chunks': chunk_ids,
+            'similarity_scores': similarity_scores,
+            'corpus_name': corpus.name,
+            'question': question,
+            'prompt_name': rag_prompt.name
+        }
+
 
     @handle_service_exceptions(logger)
     def get_corpus_stats(self, corpus_id: str) -> dict:
@@ -357,8 +377,12 @@ ANSWER:"""
         if not corpus:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 
-        chunk_count = SourceText.query.filter_by(corpus_id=corpus_id).count()
-        unique_files = db.session.query(SourceText.filename).filter_by(corpus_id=corpus_id).distinct().count()
+        chunk_count = db.session.execute(
+            db.select(db.func.count(SourceText.id)).filter_by(corpus_id=corpus_id)
+        ).scalar()
+        unique_files = db.session.execute(
+            db.select(db.func.count(db.distinct(SourceText.filename))).filter_by(corpus_id=corpus_id)
+        ).scalar()
 
         return {
             'corpus_name': corpus.name,

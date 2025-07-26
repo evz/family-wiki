@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app import create_app
+from web_app import create_app
 from web_app.database import db as _db
 
 
@@ -136,14 +136,12 @@ def clean_db(db):
             Person,
             Place,
             Query,
-            QuerySession,
             SourceText,
             TextCorpus,
         )
 
         # Delete in order to respect foreign key constraints
         Query.query.delete()
-        QuerySession.query.delete()
         SourceText.query.delete()
         TextCorpus.query.delete()
         Family.query.delete()

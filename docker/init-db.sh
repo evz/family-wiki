@@ -9,7 +9,7 @@ init_database() {
     python -c "
 import sys
 import traceback
-from app import create_app
+from web_app import create_app
 
 try:
     print('Creating Flask application...')

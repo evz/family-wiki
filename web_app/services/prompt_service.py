@@ -16,13 +16,12 @@ logger = get_project_logger(__name__)
 class PromptService:
     """Service for managing extraction prompts"""
 
-    def get_active_prompt(self) -> ExtractionPrompt | None:
-        """Get the currently active extraction prompt"""
-        return ExtractionPrompt.query.filter_by(is_active=True).first()
-
-    def get_all_prompts(self) -> list[ExtractionPrompt]:
-        """Get all prompts ordered by creation date"""
-        return ExtractionPrompt.query.order_by(ExtractionPrompt.created_at.desc()).all()
+    def get_all_prompts(self, prompt_type: str = None) -> list[ExtractionPrompt]:
+        """Get all prompts ordered by creation date, optionally filtered by type"""
+        query = db.select(ExtractionPrompt).order_by(ExtractionPrompt.created_at.desc())
+        if prompt_type:
+            query = query.filter_by(prompt_type=prompt_type)
+        return db.session.execute(query).scalars().all()
 
     def get_prompt_by_id(self, prompt_id: str) -> ExtractionPrompt | None:
         """Get a prompt by its ID"""
@@ -33,17 +32,18 @@ class PromptService:
             logger.error(f"Invalid UUID format: {prompt_id}")
             return None
 
-    def create_prompt(self, name: str, prompt_text: str, description: str = "") -> ExtractionPrompt:
-        """Create a new extraction prompt"""
+    def create_prompt(self, name: str, prompt_text: str, prompt_type: str = 'extraction', description: str = "", template_variables: list = None) -> ExtractionPrompt:
+        """Create a new prompt"""
         prompt = ExtractionPrompt(
             name=name,
             prompt_text=prompt_text,
+            prompt_type=prompt_type,
             description=description,
-            is_active=False
+            template_variables=template_variables or []
         )
         db.session.add(prompt)
         db.session.commit()
-        logger.info(f"Created new prompt: {name}")
+        logger.info(f"Created new {prompt_type} prompt: {name}")
         return prompt
 
     def update_prompt(self, prompt_id: str, name: str = None, prompt_text: str = None,
@@ -69,31 +69,9 @@ class PromptService:
         logger.info(f"Updated prompt: {prompt.name}")
         return prompt
 
-    def set_active_prompt(self, prompt_id: str) -> bool:
-        """Set a prompt as the active one (deactivates all others)"""
-        try:
-            uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-
-            # Deactivate all prompts
-            ExtractionPrompt.query.update({'is_active': False})
-
-            # Activate the specified prompt
-            prompt = db.session.get(ExtractionPrompt, uuid_obj)
-            if not prompt:
-                db.session.rollback()
-                return False
-        except ValueError:
-            logger.error(f"Invalid UUID format: {prompt_id}")
-            db.session.rollback()
-            return False
-
-        prompt.is_active = True
-        db.session.commit()
-        logger.info(f"Set active prompt: {prompt.name}")
-        return True
 
     def delete_prompt(self, prompt_id: str) -> bool:
-        """Delete a prompt (cannot delete if it's the only one or if it's active)"""
+        """Delete a prompt"""
         try:
             uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
             prompt = db.session.get(ExtractionPrompt, uuid_obj)
@@ -101,22 +79,11 @@ class PromptService:
                 return False
         except ValueError:
             logger.error(f"Invalid UUID format: {prompt_id}")
-            return False
-
-        # Don't allow deleting the active prompt
-        if prompt.is_active:
-            logger.warning("Cannot delete active prompt")
-            return False
-
-        # Don't allow deleting if it's the only prompt
-        total_prompts = ExtractionPrompt.query.count()
-        if total_prompts <= 1:
-            logger.warning("Cannot delete the only remaining prompt")
             return False
 
         db.session.delete(prompt)
         db.session.commit()
-        logger.info(f"Deleted prompt: {prompt.name}")
+        logger.info(f"Deleted {prompt.prompt_type} prompt: {prompt.name}")
         return True
 
     def load_default_prompts(self) -> list[ExtractionPrompt]:
@@ -132,7 +99,13 @@ class PromptService:
         prompt_files = {
             "dutch_genealogy_extraction.txt": {
                 "name": "Default Dutch Genealogy Extraction",
-                "description": "Default prompt for extracting Dutch genealogical family data with family-focused approach"
+                "description": "Default prompt for extracting Dutch genealogical family data with family-focused approach",
+                "prompt_type": "extraction"
+            },
+            "default_rag_prompt.txt": {
+                "name": "Default RAG Query",
+                "description": "Default prompt for answering questions about genealogical documents using RAG",
+                "prompt_type": "rag"
             }
         }
 
@@ -146,8 +119,11 @@ class PromptService:
                 with open(prompt_file, encoding='utf-8') as f:
                     prompt_text = f.read().strip()
 
-                # Check if this prompt already exists (by name)
-                existing = ExtractionPrompt.query.filter_by(name=metadata["name"]).first()
+                # Check if this prompt already exists (by name and type)
+                prompt_type = metadata.get("prompt_type", "extraction")
+                existing = db.session.execute(
+                    db.select(ExtractionPrompt).filter_by(name=metadata["name"], prompt_type=prompt_type)
+                ).scalar_one_or_none()
                 if existing:
                     logger.info(f"Default prompt already exists: {metadata['name']}")
                     continue
@@ -156,6 +132,7 @@ class PromptService:
                 prompt = self.create_prompt(
                     name=metadata["name"],
                     prompt_text=prompt_text,
+                    prompt_type=prompt_type,
                     description=metadata["description"]
                 )
                 created_prompts.append(prompt)
@@ -163,11 +140,6 @@ class PromptService:
 
             except Exception as e:
                 logger.error(f"Failed to load default prompt from {prompt_file}: {e}")
-
-        # If this is the first prompt, make it active
-        if created_prompts and not self.get_active_prompt():
-            self.set_active_prompt(str(created_prompts[0].id))
-            logger.info(f"Set first default prompt as active: {created_prompts[0].name}")
 
         return created_prompts
 
@@ -186,7 +158,9 @@ class PromptService:
                 default_text = f.read().strip()
 
             # Find existing prompt
-            prompt = ExtractionPrompt.query.filter_by(name=prompt_name).first()
+            prompt = db.session.execute(
+                db.select(ExtractionPrompt).filter_by(name=prompt_name)
+            ).scalar_one_or_none()
             if not prompt:
                 logger.error(f"Prompt not found: {prompt_name}")
                 return None

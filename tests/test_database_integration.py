@@ -6,17 +6,17 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from app import Config, create_app
 from tests.conftest import BaseTestConfig
+from web_app import Config, create_app
 from web_app.database import db, init_db
-from web_app.database.models import ExtractionPrompt, Person, Place, SourceText, TextCorpus
-from web_app.services.prompt_service import prompt_service
+from web_app.database.models import Person, Place, SourceText, TextCorpus
 
 
 class DatabaseTestConfig(BaseTestConfig):
@@ -139,33 +139,6 @@ class TestBusinessLogicConstraints:
             assert person.extraction_method == "llm"
             assert person.confidence_score == 0.85
 
-    def test_prompt_safety_constraints(self, app):
-        """Test our prompt management safety constraints"""
-        with app.app_context():
-            db.create_all()
-
-            # Create initial prompts
-            prompt1 = ExtractionPrompt(
-                name="Prompt 1",
-                prompt_text="Text 1",
-                is_active=True
-            )
-            prompt2 = ExtractionPrompt(
-                name="Prompt 2",
-                prompt_text="Text 2",
-                is_active=False
-            )
-            db.session.add_all([prompt1, prompt2])
-            db.session.commit()
-
-            # Test safety constraint: can't delete active prompt
-            result = prompt_service.delete_prompt(str(prompt1.id))
-            assert result is False  # Should fail
-
-            # Test safety constraint: can't delete if only one left
-            prompt_service.delete_prompt(str(prompt2.id))  # Delete non-active
-            result = prompt_service.delete_prompt(str(prompt1.id))  # Try to delete last one
-            assert result is False  # Should fail
 
     def test_place_deduplication_by_name(self, app):
         """Test that our Place model prevents duplicate place names"""
@@ -299,28 +272,95 @@ class TestRAGFunctionality:
             assert chunk.token_count == 6
             assert chunk.content_hash is None  # Not set in this test
 
-    def test_query_session_configuration(self, app):
-        """Test our RAG query session configuration"""
-        with app.app_context():
-            db.create_all()
 
-            corpus = TextCorpus(name="Test Corpus", description="Test")
-            db.session.add(corpus)
-            db.session.commit()
 
-            # Test our query session business logic
-            from web_app.database.models import QuerySession
+class TestCosineSimilarity:
+    """Test cosine similarity calculation in SourceText model"""
 
-            session = QuerySession(
-                corpus=corpus,
-                session_name="Test RAG Session",
-                max_chunks=5,
-                similarity_threshold=0.75
-            )
-            db.session.add(session)
-            db.session.commit()
+    def test_identical_vectors(self):
+        """Test that identical vectors have similarity of 1.0"""
+        vec = [1, 2, 3, 4]
+        similarity = SourceText.calculate_cosine_similarity(vec, vec)
+        assert similarity == pytest.approx(1.0, abs=1e-6)
 
-            # Verify our RAG configuration is stored correctly
-            assert session.max_chunks == 5
-            assert session.similarity_threshold == 0.75
-            assert session.corpus.name == "Test Corpus"
+    def test_orthogonal_vectors(self):
+        """Test that orthogonal vectors have similarity of 0.0"""
+        vec1 = [1, 0, 0]
+        vec2 = [0, 1, 0]
+        similarity = SourceText.calculate_cosine_similarity(vec1, vec2)
+        assert similarity == pytest.approx(0.0, abs=1e-6)
+
+    def test_opposite_vectors(self):
+        """Test that opposite vectors have similarity of -1.0"""
+        vec1 = [1, 0, 0]
+        vec2 = [-1, 0, 0]
+        similarity = SourceText.calculate_cosine_similarity(vec1, vec2)
+        assert similarity == pytest.approx(-1.0, abs=1e-6)
+
+    def test_similar_vectors(self):
+        """Test that similar vectors have high positive similarity"""
+        vec1 = [1, 2, 3]
+        vec2 = [1.1, 2.1, 3.1]  # Slightly scaled version
+        similarity = SourceText.calculate_cosine_similarity(vec1, vec2)
+        assert similarity > 0.99  # Should be very high
+
+    def test_zero_vector_handling(self):
+        """Test that zero vectors are handled gracefully"""
+        vec1 = [0, 0, 0]
+        vec2 = [1, 2, 3]
+
+        # Zero vector with non-zero vector should return 0
+        similarity1 = SourceText.calculate_cosine_similarity(vec1, vec2)
+        assert similarity1 == 0.0
+
+        # Both zero vectors should return 0
+        similarity2 = SourceText.calculate_cosine_similarity(vec1, vec1)
+        assert similarity2 == 0.0
+
+    def test_numpy_array_input(self):
+        """Test that numpy arrays work as input"""
+        vec1 = np.array([1, 2, 3])
+        vec2 = np.array([4, 5, 6])
+        similarity = SourceText.calculate_cosine_similarity(vec1, vec2)
+
+        # Calculate expected similarity manually
+        expected = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        assert similarity == pytest.approx(expected, abs=1e-6)
+
+    def test_mixed_input_types(self):
+        """Test that mixing lists and numpy arrays works"""
+        vec1 = [1, 2, 3]
+        vec2 = np.array([1, 2, 3])
+        similarity = SourceText.calculate_cosine_similarity(vec1, vec2)
+        assert similarity == pytest.approx(1.0, abs=1e-6)
+
+    def test_high_dimensional_vectors(self):
+        """Test with high-dimensional vectors (typical embedding size)"""
+        # Create random vectors of typical embedding dimension
+        np.random.seed(42)  # For reproducible results
+        vec1 = np.random.randn(384)  # Common embedding dimension
+        vec2 = np.random.randn(384)
+
+        similarity = SourceText.calculate_cosine_similarity(vec1, vec2)
+
+        # Should be between -1 and 1
+        assert -1 <= similarity <= 1
+
+        # Calculate expected similarity manually
+        expected = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        assert similarity == pytest.approx(expected, abs=1e-6)
+
+    def test_real_world_embedding_example(self):
+        """Test with realistic embedding vectors"""
+        # Simulate embeddings for similar text chunks
+        embedding1 = [0.1, 0.2, -0.3, 0.4, -0.1, 0.5, 0.2, -0.2]
+        embedding2 = [0.15, 0.25, -0.25, 0.35, -0.05, 0.45, 0.25, -0.15]  # Similar
+        embedding3 = [-0.1, -0.2, 0.3, -0.4, 0.1, -0.5, -0.2, 0.2]  # Opposite-ish
+
+        # Similar embeddings should have high similarity
+        similarity_similar = SourceText.calculate_cosine_similarity(embedding1, embedding2)
+        assert similarity_similar > 0.8
+
+        # Different embeddings should have lower similarity
+        similarity_different = SourceText.calculate_cosine_similarity(embedding1, embedding3)
+        assert similarity_different < similarity_similar

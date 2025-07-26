@@ -144,3 +144,9 @@ tests/test_flask_app.py
 tests/test_dutch_utils.py
 * particle should be tussenvoegsel
 
+
+---
+
+DB migrations
+QuerySession needs to be removed
+Need way of deleting corpus in UI

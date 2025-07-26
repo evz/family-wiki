@@ -1,8 +1,9 @@
 """
 RAG processing tasks for corpus creation and text embedding
 """
-import requests
 import time
+
+import requests
 from celery import current_task
 from flask import current_app
 
@@ -10,7 +11,8 @@ from web_app.database import db
 from web_app.database.models import TextCorpus
 from web_app.services.rag_service import RAGService
 from web_app.shared.logging_config import get_project_logger
-from web_app.tasks.celery_app import celery_app
+from web_app.tasks.celery_app import celery
+
 
 logger = get_project_logger(__name__)
 
@@ -28,10 +30,10 @@ class CorpusProcessingManager:
         self.corpus = db.session.get(TextCorpus, self.corpus_id)
         if not self.corpus:
             raise ValueError(f"Corpus not found: {self.corpus_id}")
-        
+
         if not self.corpus.raw_content:
             raise ValueError("Corpus has no raw content to process")
-        
+
         logger.info(f"Loaded corpus: {self.corpus.name}")
 
     def _update_corpus_status(self, status: str, error: str = None):
@@ -62,9 +64,9 @@ class CorpusProcessingManager:
     def _pull_model_with_progress(self, model_name: str):
         """Pull a model from Ollama registry with streaming progress updates"""
         ollama_base_url = self._get_ollama_connection()
-        
+
         logger.info(f"Starting pull for embedding model: {model_name}")
-        
+
         # Start the pull with streaming
         pull_response = requests.post(
             f"{ollama_base_url}/api/pull",
@@ -75,15 +77,15 @@ class CorpusProcessingManager:
             stream=True,
             timeout=None  # No timeout for model downloads
         )
-        
+
         if pull_response.status_code != 200:
             raise Exception(f"Failed to start pull for model {model_name}: {pull_response.status_code} - {pull_response.text}")
-        
+
         # Process streaming response
         total_size = None
         completed_size = 0
         last_progress = 30
-        
+
         for line in pull_response.iter_lines():
             if line:
                 try:
@@ -91,16 +93,16 @@ class CorpusProcessingManager:
                     if data.startswith('{"'):
                         import json
                         status_data = json.loads(data)
-                        
+
                         # Update progress based on download status
                         if 'total' in status_data and 'completed' in status_data:
                             total_size = status_data['total']
                             completed_size = status_data['completed']
-                            
+
                             if total_size > 0:
                                 download_progress = (completed_size / total_size) * 40  # 40% of total progress for download
                                 current_progress = 30 + int(download_progress)
-                                
+
                                 if current_progress > last_progress:
                                     current_task.update_state(
                                         state='PROGRESS',
@@ -110,16 +112,16 @@ class CorpusProcessingManager:
                                         }
                                     )
                                     last_progress = current_progress
-                        
+
                         # Check if pull is complete
                         if status_data.get('status') == 'success' or 'success' in status_data:
                             logger.info(f"Successfully pulled embedding model: {model_name}")
                             break
-                            
+
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     # Skip malformed lines
                     continue
-        
+
         # Wait a moment for model to be fully available
         time.sleep(3)
 
@@ -128,28 +130,28 @@ class CorpusProcessingManager:
         if not self.corpus.embedding_model:
             logger.warning("No embedding model specified for corpus")
             return
-            
+
         current_task.update_state(
             state='PROGRESS',
             meta={'status': f'Checking availability of embedding model: {self.corpus.embedding_model}...', 'progress': 25}
         )
-        
+
         # Check if model is already available
         if self._is_model_available(self.corpus.embedding_model):
             logger.info(f"Embedding model {self.corpus.embedding_model} is already available")
             return
-        
+
         # Model not available, need to pull it
         current_task.update_state(
             state='PROGRESS',
             meta={'status': f'Downloading embedding model: {self.corpus.embedding_model}...', 'progress': 30}
         )
-        
+
         try:
             self._pull_model_with_progress(self.corpus.embedding_model)
         except Exception as e:
             raise Exception(f"Error pulling embedding model: {str(e)}")
-        
+
         # Verify model is now available
         if not self._is_model_available(self.corpus.embedding_model):
             raise Exception(f"Model {self.corpus.embedding_model} was pulled but is not showing as available")
@@ -163,15 +165,15 @@ class CorpusProcessingManager:
             error_context: Additional context for the error message
         """
         error_msg = f"{error_context}: {str(error)}" if error_context else str(error)
-        
+
         logger.error(f"Corpus processing error: {error_msg}")
-        
+
         # Update task state
         current_task.update_state(
             state='FAILURE',
             meta={'error': error_msg}
         )
-        
+
         # Try to update corpus status in database
         try:
             if self.corpus:
@@ -194,17 +196,17 @@ class CorpusProcessingManager:
             state='PROGRESS',
             meta={'status': 'Generating text chunks and embeddings...', 'progress': 40}
         )
-        
+
         # Use corpus name as filename for source text
         filename = f"{self.corpus.name}.txt"
-        
+
         # Process the text using RAG service
         stored_chunks = self.rag_service.store_source_text(
-            self.corpus_id, 
+            self.corpus_id,
             filename,
             self.corpus.raw_content
         )
-        
+
         logger.info(f"Processed {stored_chunks} chunks for corpus {self.corpus.name}")
         return stored_chunks
 
@@ -216,27 +218,27 @@ class CorpusProcessingManager:
             meta={'status': 'Loading corpus from database...', 'progress': 10}
         )
         self._load_corpus()
-        
+
         # Set status to processing
         current_task.update_state(
             state='PROGRESS',
             meta={'status': 'Starting text processing...', 'progress': 20}
         )
         self._update_corpus_status('processing')
-        
+
         # Ensure embedding model is available
         self._ensure_embedding_model_available()
-        
+
         # Process the text content
         stored_chunks = self._process_text_content()
-        
+
         # Mark as completed
         current_task.update_state(
             state='PROGRESS',
             meta={'status': 'Finalizing corpus preparation...', 'progress': 90}
         )
         self._update_corpus_status('completed')
-        
+
         return {
             'success': True,
             'corpus_id': self.corpus_id,
@@ -246,7 +248,7 @@ class CorpusProcessingManager:
         }
 
 
-@celery_app.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
 def process_corpus(self, corpus_id: str):
     """
     Process corpus text content and create embeddings
@@ -258,20 +260,20 @@ def process_corpus(self, corpus_id: str):
         dict: Processing results with success status and statistics
     """
     task_manager = CorpusProcessingManager(corpus_id)
-    
+
     try:
         result = task_manager.run_corpus_processing()
         logger.info(f"Corpus processing completed successfully: {result}")
         return result
-        
+
     except ValueError as e:
         task_manager.handle_processing_error(e, "Invalid corpus data")
         raise
-        
+
     except ConnectionError as e:
         task_manager.handle_processing_error(e, "Connection error")
         raise
-        
+
     except Exception as e:
         task_manager.handle_processing_error(e, "Unexpected error")
         raise

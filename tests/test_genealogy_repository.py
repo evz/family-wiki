@@ -5,8 +5,8 @@ Tests for GenealogyDataRepository
 
 import pytest
 
-from app import create_app
 from tests.conftest import BaseTestConfig
+from web_app import create_app
 from web_app.database import db
 from web_app.database.models import Family, Person, Place
 from web_app.repositories.genealogy_repository import GenealogyDataRepository

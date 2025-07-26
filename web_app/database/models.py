@@ -5,6 +5,7 @@ SQLAlchemy models for Family Wiki entities with proper relationships and RAG sup
 import uuid
 from datetime import UTC, datetime
 
+import numpy as np
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import UUID as POSTGRESQL_UUID
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -55,12 +56,12 @@ class TextCorpus(db.Model):
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
-    
+
     # Raw content and processing status
     raw_content = db.Column(db.Text)  # Store uploaded file content
     processing_status = db.Column(db.String(20), default='pending') # 'pending', 'processing', 'ready', 'failed'
     processing_error = db.Column(db.Text)  # Store error message if processing fails
-    
+
     # Embedding configuration
     embedding_model = db.Column(db.String(100), default='sentence-transformers/all-MiniLM-L6-v2')
     chunk_size = db.Column(db.Integer, default=1000)
@@ -116,6 +117,35 @@ class SourceText(db.Model):
         db.Index('idx_source_text_embedding', 'embedding', postgresql_using='ivfflat', postgresql_ops={'embedding': 'vector_cosine_ops'}),
     )
 
+    @staticmethod
+    def calculate_cosine_similarity(embedding_a, embedding_b):
+        """
+        Calculate cosine similarity between two embeddings
+        
+        Args:
+            embedding_a: First embedding (numpy array or list)
+            embedding_b: Second embedding (numpy array or list)
+            
+        Returns:
+            float: Cosine similarity score between -1 and 1
+                  1 = identical, 0 = orthogonal, -1 = opposite
+        """
+        vec_a = np.array(embedding_a)
+        vec_b = np.array(embedding_b)
+
+        # Calculate dot product
+        dot_product = np.dot(vec_a, vec_b)
+
+        # Calculate norms
+        norm_a = np.linalg.norm(vec_a)
+        norm_b = np.linalg.norm(vec_b)
+
+        # Avoid division by zero
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+
+        return dot_product / (norm_a * norm_b)
+
     @classmethod
     def find_similar(cls, query_embedding, corpus_id=None, limit=5, similarity_threshold=0.7):
         """Find text chunks similar to the query embedding using cosine similarity"""
@@ -137,11 +167,9 @@ class SourceText(db.Model):
         if similarity_threshold:
             filtered_results = []
             for chunk in results:
-                # Calculate similarity from distance
-                distance = db.session.query(
-                    chunk.embedding.cosine_distance(query_embedding)
-                ).scalar()
-                similarity = 1 - distance
+                # Calculate cosine similarity using our helper method
+                similarity = cls.calculate_cosine_similarity(chunk.embedding, query_embedding)
+
                 if similarity >= similarity_threshold:
                     filtered_results.append((chunk, similarity))
             return filtered_results
@@ -152,34 +180,13 @@ class SourceText(db.Model):
         return f'<SourceText {self.filename}:{self.page_number}:{self.chunk_number}>'
 
 
-class QuerySession(db.Model):
-    """Model for tracking user question-answering sessions"""
-    __tablename__ = 'query_sessions'
-
-    id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
-    corpus_id = db.Column(UUID(), db.ForeignKey('text_corpora.id'), nullable=False)
-    session_name = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
-
-    # RAG configuration for this session
-    max_chunks = db.Column(db.Integer, default=5)  # How many chunks to retrieve
-    similarity_threshold = db.Column(db.Float, default=0.7)  # Minimum similarity score
-
-    # Relationships
-    corpus = db.relationship('TextCorpus')
-    queries = db.relationship('Query', back_populates='session', cascade='all, delete-orphan')
-
-    def __repr__(self):
-        return f'<QuerySession {self.session_name or self.id}>'
-
 
 class Query(db.Model):
     """Model for individual questions and RAG responses"""
     __tablename__ = 'queries'
 
     id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
-    session_id = db.Column(UUID(), db.ForeignKey('query_sessions.id'), nullable=False)
+    corpus_id = db.Column(UUID(), db.ForeignKey('text_corpora.id'), nullable=False)
 
     # Question and response
     question = db.Column(db.Text, nullable=False)
@@ -190,6 +197,7 @@ class Query(db.Model):
     retrieved_chunks = db.Column(db.JSON)  # List of chunk IDs that were used
     similarity_scores = db.Column(db.JSON)  # Similarity scores for retrieved chunks
     ollama_model = db.Column(db.String(100))
+    prompt_used = db.Column(db.String(255))  # Name of the prompt that was used
     processing_time_ms = db.Column(db.Integer)
 
     # Status
@@ -201,26 +209,29 @@ class Query(db.Model):
     completed_at = db.Column(db.DateTime)
 
     # Relationships
-    session = db.relationship('QuerySession', back_populates='queries')
+    corpus = db.relationship('TextCorpus')
 
     def __repr__(self):
         return f'<Query {self.question[:50]}...>'
 
 
 class ExtractionPrompt(db.Model):
-    """Model for storing and managing LLM extraction prompts"""
+    """Model for storing and managing LLM prompts of different types"""
     __tablename__ = 'extraction_prompts'
 
     id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.String(255), nullable=False)
     prompt_text = db.Column(db.Text, nullable=False)
-    is_active = db.Column(db.Boolean, default=False)
+    prompt_type = db.Column(db.String(50), nullable=False, default='extraction')  # 'extraction', 'rag', 'research'
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
     description = db.Column(db.Text)
 
+    # Template variables documentation
+    template_variables = db.Column(db.JSON)  # Store info about {question}, {context}, etc.
+
     def __repr__(self):
-        return f'<ExtractionPrompt {self.name}>'
+        return f'<ExtractionPrompt {self.name} ({self.prompt_type})>'
 
 
 class OcrPage(db.Model):

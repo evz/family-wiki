@@ -1,12 +1,12 @@
 """
 Tests for error_handling module
 """
-from unittest.mock import Mock, patch, PropertyMock
+from unittest.mock import Mock, PropertyMock
 
 import pytest
 from celery.exceptions import OperationalError
-from flask import Flask, url_for
-from kombu.exceptions import ConnectionError, OperationalError as KombuOperationalError
+from kombu.exceptions import ConnectionError
+from kombu.exceptions import OperationalError as KombuOperationalError
 from sqlalchemy.exc import SQLAlchemyError
 
 from web_app.blueprints.error_handling import (

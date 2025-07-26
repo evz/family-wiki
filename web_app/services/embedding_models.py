@@ -1,11 +1,12 @@
 """
 Embedding model configuration and management
 """
-from typing import Dict, List
+
 import requests
 from flask import current_app
 
 from web_app.shared.logging_config import get_project_logger
+
 
 logger = get_project_logger(__name__)
 
@@ -13,7 +14,7 @@ logger = get_project_logger(__name__)
 # Curated list of recommended embedding models optimized for multilingual use cases
 # Prioritized for English questions about Dutch text - using exact Ollama paths
 RECOMMENDED_EMBEDDING_MODELS = {
-    'zylonai/multilingual-e5-large': {
+        'zylonai/multilingual-e5-large:latest': {
         'name': 'Multilingual E5 Large',
         'description': 'State-of-the-art multilingual embedding model from Microsoft. Excellent for cross-language retrieval (English questions, Dutch content).',
         'use_cases': 'Cross-language search, multilingual documents, Dutch-English genealogy',
@@ -71,10 +72,10 @@ RECOMMENDED_EMBEDDING_MODELS = {
 }
 
 # Default model prioritizing multilingual capabilities - using the large E5 model
-DEFAULT_EMBEDDING_MODEL = 'zylonai/multilingual-e5-large'
+DEFAULT_EMBEDDING_MODEL = 'zylonai/multilingual-e5-large:latest'
 
 
-def get_available_embedding_models() -> List[Dict[str, str]]:
+def get_available_embedding_models() -> list[dict[str, str]]:
     """
     Get list of available embedding models from Ollama server
     Falls back to recommended models if Ollama is unavailable
@@ -87,54 +88,54 @@ def get_available_embedding_models() -> List[Dict[str, str]]:
         ollama_host = current_app.config.get('OLLAMA_HOST', 'localhost')
         ollama_port = current_app.config.get('OLLAMA_PORT', 11434)
         ollama_base_url = f"http://{ollama_host}:{ollama_port}"
-        
+
         response = requests.get(f"{ollama_base_url}/api/tags", timeout=5)
-        
+
         if response.status_code == 200:
             ollama_models = response.json().get('models', [])
             available_embedding_models = []
-            
+
             # Filter for embedding models that are actually available
             for model_id, model_info in RECOMMENDED_EMBEDDING_MODELS.items():
                 # Check if this embedding model is available in Ollama
                 model_available = any(
-                    model_id in ollama_model['name'] 
+                    model_id in ollama_model['name']
                     for ollama_model in ollama_models
                 )
-                
+
                 available_embedding_models.append({
                     'id': model_id,
                     'name': model_info['name'],
                     'description': model_info['description'],
                     'use_cases': model_info['use_cases'],
-                    'size': model_info['size'], 
+                    'size': model_info['size'],
                     'speed': model_info['speed'],
+                    'languages': model_info['languages'],
+                    'cross_language': model_info['cross_language'],
+                    'recommended_for_dutch': model_info['recommended_for_dutch'],
+                    'display_name': model_info['display_name'],
                     'available': model_available
                 })
-            
-            # Always include at least the recommended models for selection
-            if not available_embedding_models:
-                logger.warning("No embedding models found in Ollama, using recommended list")
-                available_embedding_models = [
-                    {
-                        'id': model_id,
-                        'available': model_id == DEFAULT_EMBEDDING_MODEL,
-                        **model_info
-                    }
-                    for model_id, model_info in RECOMMENDED_EMBEDDING_MODELS.items()
-                ]
-            
+
             return available_embedding_models
-            
+
     except Exception as e:
         logger.warning(f"Could not connect to Ollama to check available models: {e}")
-    
-    # Fallback to recommended models
+
+    # Fallback to recommended models - all marked as unavailable since Ollama is not accessible
     return [
         {
             'id': model_id,
-            'available': model_id == DEFAULT_EMBEDDING_MODEL,
-            **model_info
+            'name': model_info['name'],
+            'description': model_info['description'],
+            'use_cases': model_info['use_cases'],
+            'size': model_info['size'],
+            'speed': model_info['speed'],
+            'languages': model_info['languages'],
+            'cross_language': model_info['cross_language'],
+            'recommended_for_dutch': model_info['recommended_for_dutch'],
+            'display_name': model_info['display_name'],
+            'available': False  # All unavailable since Ollama is not accessible
         }
         for model_id, model_info in RECOMMENDED_EMBEDDING_MODELS.items()
     ]
@@ -153,7 +154,7 @@ def validate_embedding_model(model_id: str) -> bool:
     return model_id in RECOMMENDED_EMBEDDING_MODELS
 
 
-def get_model_info(model_id: str) -> Dict[str, str]:
+def get_model_info(model_id: str) -> dict[str, str]:
     """
     Get information about a specific embedding model
     

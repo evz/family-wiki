@@ -35,28 +35,24 @@ services:
     image: family-wiki-web:latest
     ports:
       - "5000:5000"
-    environment:
-      # Flask configuration
-      FLASK_APP: app.py
-      FLASK_ENV: development
-      FLASK_DEBUG: 1
-      
-      # Database configuration
-      DATABASE_URL: postgresql://family_wiki_user:family_wiki_password@localhost:5432/family_wiki
-      
-      # Celery configuration
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://localhost:6379/0}
-      
-      # Ollama configuration - external machine
-      OLLAMA_HOST: ${OLLAMA_HOST:-192.168.1.234}  # Can be overridden via .env
-      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-aya:35b-23}
-      
-      # Additional configuration
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      WTF_CSRF_ENABLED: ${WTF_CSRF_ENABLED:-True}
     network_mode: host
+    environment:
+      # Flask Configuration
+      - SECRET_KEY=${SECRET_KEY}
+      - FLASK_ENV=${FLASK_ENV:-development}
+      - FLASK_DEBUG=${FLASK_DEBUG:-1}
+      - WTF_CSRF_ENABLED=${WTF_CSRF_ENABLED:-True}
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL}
+      # Celery Configuration
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      # Ollama Configuration
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - OLLAMA_PORT=${OLLAMA_PORT}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      # Optional configurations
+      - BENCHMARK_MODELS=${BENCHMARK_MODELS}
     volumes:
       # Bind mount for development - changes reflect immediately
       - .:/app
@@ -85,20 +81,25 @@ services:
   celery-worker:
     build: .
     image: family-wiki-web:latest
-    command: celery -A web_app.tasks.celery_app worker --loglevel=info
-    environment:
-      # Database configuration
-      DATABASE_URL: postgresql://family_wiki_user:family_wiki_password@localhost:5432/family_wiki
-      
-      # Celery configuration
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://localhost:6379/0}
-      
-      # Ollama configuration - external machine
-      OLLAMA_HOST: ${OLLAMA_HOST:-192.168.1.234}
-      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-aya:35b-23}
+    command: celery -A celery_worker.celery worker --loglevel=info
     network_mode: host
+    environment:
+      # Flask Configuration
+      - SECRET_KEY=${SECRET_KEY}
+      - FLASK_ENV=${FLASK_ENV:-development}
+      - FLASK_DEBUG=${FLASK_DEBUG:-1}
+      - WTF_CSRF_ENABLED=${WTF_CSRF_ENABLED:-True}
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL}
+      # Celery Configuration
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      # Ollama Configuration
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - OLLAMA_PORT=${OLLAMA_PORT}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      # Optional configurations
+      - BENCHMARK_MODELS=${BENCHMARK_MODELS}
     volumes:
       - .:/app
       - /app/node_modules

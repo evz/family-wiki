@@ -9,7 +9,7 @@ from celery.exceptions import Retry
 from web_app.pdf_processing.ocr_processor import PDFOCRProcessor
 from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.shared.logging_config import get_project_logger
-from web_app.tasks.celery_app import celery_app
+from web_app.tasks.celery_app import celery
 
 
 logger = get_project_logger(__name__)
@@ -219,7 +219,7 @@ class OCRTaskManager:
         }
 
 
-@celery_app.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
 def process_pdfs_ocr(self, pdf_folder_path: str = None):
     """
     Process PDFs using OCR and extract text
