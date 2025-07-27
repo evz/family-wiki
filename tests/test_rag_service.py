@@ -369,7 +369,8 @@ class TestRAGService:
             assert result['success'] is True
             assert result['corpus_name'] == "Test Deletion Corpus"
             assert result['deleted_chunks'] == chunk_count_before
-            assert "deleted successfully" in result['message']
+            assert result['deleted_queries'] == 0  # No queries in this test
+            assert "Successfully deleted" in result['message']
 
             # Verify corpus is gone
             assert db.session.get(TextCorpus, corpus.id) is None
@@ -396,6 +397,85 @@ class TestRAGService:
         with app.app_context():
             with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
                 rag_service.delete_corpus("invalid-uuid")
+
+    def test_delete_corpus_with_queries(self, rag_service, app, db):
+        """Test successful corpus deletion when corpus has associated queries"""
+        with app.app_context():
+            from web_app.database.models import Query
+
+            # Create a test corpus
+            corpus = rag_service.create_corpus("Test Corpus with Queries", "A corpus with queries")
+            corpus_id = str(corpus.id)
+
+            # Add some source text to it
+            with patch.object(rag_service, 'generate_embedding', return_value=[0.1] * 1024):
+                chunks_stored = rag_service.store_source_text(
+                    corpus_id=corpus_id,
+                    filename="test.txt",
+                    content="This is test content with queries.",
+                    page_number=1
+                )
+                assert chunks_stored > 0
+
+            # Create some queries associated with this corpus
+            query1 = Query(
+                corpus_id=corpus.id,
+                question="What is this about?",
+                answer="This is about test content."
+            )
+            query2 = Query(
+                corpus_id=corpus.id,
+                question="Tell me more",
+                answer="More information here."
+            )
+            db.session.add(query1)
+            db.session.add(query2)
+            db.session.commit()
+
+            # Verify corpus, chunks, and queries exist
+            assert db.session.get(TextCorpus, corpus.id) is not None
+            chunk_count_before = db.session.execute(
+                db.select(db.func.count()).select_from(
+                    db.select(SourceText).filter_by(corpus_id=corpus.id).subquery()
+                )
+            ).scalar()
+            query_count_before = db.session.execute(
+                db.select(db.func.count()).select_from(
+                    db.select(Query).filter_by(corpus_id=corpus.id).subquery()
+                )
+            ).scalar()
+            assert chunk_count_before > 0
+            assert query_count_before == 2
+
+            # Delete the corpus
+            result = rag_service.delete_corpus(corpus_id)
+
+            # Verify deletion result
+            assert result['success'] is True
+            assert result['corpus_name'] == "Test Corpus with Queries"
+            assert result['deleted_chunks'] == chunk_count_before
+            assert result['deleted_queries'] == 2
+            assert "queries" in result['message']
+            assert "Successfully deleted" in result['message']
+
+            # Verify corpus is gone
+            assert db.session.get(TextCorpus, corpus.id) is None
+
+            # Verify associated chunks are gone
+            chunk_count_after = db.session.execute(
+                db.select(db.func.count()).select_from(
+                    db.select(SourceText).filter_by(corpus_id=corpus.id).subquery()
+                )
+            ).scalar()
+            assert chunk_count_after == 0
+
+            # Verify associated queries are gone
+            query_count_after = db.session.execute(
+                db.select(db.func.count()).select_from(
+                    db.select(Query).filter_by(corpus_id=corpus.id).subquery()
+                )
+            ).scalar()
+            assert query_count_after == 0
 
 
 

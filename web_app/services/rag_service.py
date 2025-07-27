@@ -187,6 +187,9 @@ class RAGService:
                 self.logger.warning(f"Failed to generate embedding for chunk {i} of {filename}")
                 continue
 
+            # Generate Daitch-Mokotoff codes for genealogy name matching
+            dm_codes = self.text_processor.generate_daitch_mokotoff_codes(chunk)
+
             # Create source text record
             source_text = SourceText(
                 corpus_id=corpus_id,
@@ -197,7 +200,9 @@ class RAGService:
                 content_hash=content_hash,
                 embedding=embedding,
                 embedding_model=corpus.embedding_model,  # Use corpus's embedding model
-                token_count=len(chunk.split())
+                token_count=len(chunk.split()),
+                dm_codes=dm_codes  # Store DM codes array
+                # Note: content_tsvector will be populated by PostgreSQL trigger or function
             )
 
             db.session.add(source_text)
@@ -267,8 +272,11 @@ class RAGService:
             if not corpus:
                 raise NotFoundError(f"Corpus not found: {corpus_id}")
 
+        # Clean query text for consistent processing (no spell correction for speed)
+        cleaned_query_text = self.text_processor.clean_text_for_rag(query_text, spellfix=False)
+
         # Generate embedding for query using corpus's embedding model
-        query_embedding = self.generate_embedding(query_text, corpus.embedding_model)
+        query_embedding = self.generate_embedding(cleaned_query_text, corpus.embedding_model)
         if not query_embedding:
             raise ExternalServiceError("Failed to generate query embedding")
 
@@ -284,6 +292,176 @@ class RAGService:
             similarity_threshold=similarity_threshold
         )
 
+        return results
+
+    @handle_service_exceptions(logger)
+    def hybrid_search(self, query_text: str, corpus_id: str = None, limit: int = 12,
+                     vec_limit: int = 25, trgm_limit: int = 20, phon_limit: int = 40) -> list[tuple[SourceText, float]]:
+        """
+        Perform hybrid search using Reciprocal Rank Fusion (RRF) combining:
+        1. Vector similarity (semantic search)
+        2. Trigram similarity (fuzzy text matching)
+        3. Full-text search (exact keyword matching)  
+        4. Phonetic matching (Daitch-Mokotoff codes for genealogy names)
+        
+        Args:
+            query_text: The search query
+            corpus_id: ID of corpus to search (uses active if None)
+            limit: Final number of results to return
+            vec_limit: Number of results from vector search
+            trgm_limit: Number of results from trigram search
+            phon_limit: Number of results from phonetic search
+            
+        Returns:
+            List of (SourceText, combined_score) tuples ordered by RRF score
+        """
+        from sqlalchemy import text
+
+        # Use active corpus if none specified
+        if not corpus_id:
+            corpus = self.get_active_corpus()
+            if not corpus:
+                raise NotFoundError("No active corpus available for search")
+            corpus_id = corpus.id
+        else:
+            # Get corpus to determine embedding model
+            if isinstance(corpus_id, str):
+                corpus_id = uuid.UUID(corpus_id)
+            corpus = db.session.get(TextCorpus, corpus_id)
+            if not corpus:
+                raise NotFoundError(f"Corpus not found: {corpus_id}")
+
+        # Clean query text using same processing as corpus (but without spell correction for speed)
+        cleaned_query = self.text_processor.clean_text_for_rag(query_text, spellfix=False)
+
+        # Generate query embedding for vector search (use cleaned query for consistency)
+        query_embedding = self.generate_embedding(cleaned_query, corpus.embedding_model)
+        if not query_embedding:
+            raise ExternalServiceError("Failed to generate query embedding")
+
+        # Generate DM codes for phonetic search (use cleaned query)
+        query_dm_codes = self.text_processor.generate_daitch_mokotoff_codes(cleaned_query)
+
+        # Convert embedding to vector string for PostgreSQL
+        if hasattr(query_embedding, 'tolist'):
+            query_embedding_list = query_embedding.tolist()
+        elif isinstance(query_embedding, list):
+            query_embedding_list = query_embedding
+        else:
+            query_embedding_list = list(query_embedding)
+        vector_str = '[' + ','.join(map(str, query_embedding_list)) + ']'
+
+        # Convert DM codes array to PostgreSQL array literal
+        if query_dm_codes:
+            dm_codes_str = "ARRAY[" + ",".join(f"'{code}'" for code in query_dm_codes) + "]"
+        else:
+            dm_codes_str = "ARRAY[]::varchar[]"
+
+        # Execute hybrid search query using RRF
+        hybrid_query = text(f"""
+            WITH
+            params AS (
+              SELECT
+                '{vector_str}'::vector AS q_vec,
+                plainto_tsquery('dutch', :query_text) AS q_ts,
+                {dm_codes_str} AS q_dm
+            ),
+            
+            vec AS (
+              SELECT id,
+                     row_number() OVER () AS vec_rank
+              FROM   source_texts, params
+              WHERE  corpus_id = :corpus_id
+                AND  embedding IS NOT NULL
+              ORDER  BY embedding <=> q_vec
+              LIMIT  :vec_limit
+            ),
+            
+            trgm AS (
+              SELECT id,
+                     row_number() OVER (ORDER BY similarity(content, :query_text) DESC) AS tg_rank
+              FROM   source_texts
+              WHERE  corpus_id = :corpus_id
+                AND  content % :query_text
+              LIMIT  :trgm_limit
+            ),
+            
+            fts AS (
+              SELECT id,
+                     row_number() OVER (ORDER BY ts_rank(content_tsvector, q_ts) DESC) AS fts_rank
+              FROM   source_texts, params
+              WHERE  corpus_id = :corpus_id
+                AND  content_tsvector @@ q_ts
+              LIMIT  :trgm_limit
+            ),
+            
+            phon AS (
+              SELECT id,
+                     row_number() OVER () AS ph_rank
+              FROM   source_texts, params
+              WHERE  corpus_id = :corpus_id
+                AND  dm_codes && q_dm::varchar[]
+                AND  array_length(q_dm, 1) > 0
+              LIMIT  :phon_limit
+            ),
+            
+            rrf AS (
+              SELECT id, 1.0/(60+vec_rank) AS score FROM vec
+              UNION ALL
+              SELECT id, 1.0/(60+tg_rank) AS score FROM trgm
+              UNION ALL
+              SELECT id, 1.0/(60+fts_rank) AS score FROM fts
+              UNION ALL
+              SELECT id, 1.0/(80+ph_rank) AS score FROM phon
+            )
+            
+            SELECT st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number, 
+                   st.content, st.content_hash, st.embedding, st.embedding_model, 
+                   st.token_count, st.created_at, st.updated_at, st.content_tsvector,
+                   st.dm_codes, SUM(rrf.score) as combined_score
+            FROM   rrf 
+            JOIN   source_texts st ON rrf.id = st.id
+            GROUP  BY st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number,
+                      st.content, st.content_hash, st.embedding, st.embedding_model,
+                      st.token_count, st.created_at, st.updated_at, st.content_tsvector,
+                      st.dm_codes
+            ORDER  BY SUM(rrf.score) DESC
+            LIMIT  :limit
+        """)
+
+        # Execute the query (use cleaned query for all text-based searches)
+        result = db.session.execute(hybrid_query, {
+            'query_text': cleaned_query,
+            'corpus_id': corpus_id,
+            'vec_limit': vec_limit,
+            'trgm_limit': trgm_limit,
+            'phon_limit': phon_limit,
+            'limit': limit
+        })
+
+        # Convert results to SourceText objects with scores
+        results = []
+        for row in result:
+            # Create SourceText object from row data
+            source_text = SourceText(
+                id=row.id,
+                corpus_id=row.corpus_id,
+                filename=row.filename,
+                page_number=row.page_number,
+                chunk_number=row.chunk_number,
+                content=row.content,
+                content_hash=row.content_hash,
+                embedding=row.embedding,
+                embedding_model=row.embedding_model,
+                token_count=row.token_count,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                content_tsvector=row.content_tsvector,
+                dm_codes=row.dm_codes
+            )
+            results.append((source_text, float(row.combined_score)))
+
+        self.logger.info(f"Hybrid search returned {len(results)} results for query: {query_text[:50]}...")
         return results
 
     @handle_service_exceptions(logger)
@@ -336,12 +514,14 @@ class RAGService:
                 self.logger.warning(f"Error processing conversation context: {e}")
                 search_query = question
 
-        # Perform semantic search with the enhanced query
-        return self.semantic_search(
-            query_text=search_query,
+        # Clean the search query for consistent processing
+        cleaned_search_query = self.text_processor.clean_text_for_rag(search_query, spellfix=False)
+        
+        # Perform hybrid search with the enhanced and cleaned query
+        return self.hybrid_search(
+            query_text=cleaned_search_query,
             corpus_id=corpus_id,
-            limit=limit,
-            similarity_threshold=similarity_threshold
+            limit=limit
         )
 
     @handle_service_exceptions(logger)
@@ -384,11 +564,10 @@ class RAGService:
                 similarity_threshold=similarity_threshold
             )
         else:
-            search_results = self.semantic_search(
+            search_results = self.hybrid_search(
                 query_text=question,
                 corpus_id=corpus_id,
-                limit=max_chunks,
-                similarity_threshold=similarity_threshold
+                limit=max_chunks
             )
 
         if not search_results:
@@ -487,17 +666,47 @@ class RAGService:
 
         self.logger.info(f"Deleting corpus '{corpus_name}' with {chunk_count} chunks")
 
-        # Delete the corpus (cascade will delete associated SourceText records)
+        # Delete related records first to avoid foreign key violations
+        # Delete Query records that reference this corpus
+        from web_app.database.models import Query
+        query_count = db.session.execute(
+            db.select(db.func.count(Query.id)).filter_by(corpus_id=corpus_id)
+        ).scalar()
+
+        if query_count > 0:
+            self.logger.info(f"Deleting {query_count} associated queries")
+            db.session.execute(
+                db.delete(Query).where(Query.corpus_id == corpus_id)
+            )
+
+        # Delete SourceText records (should be handled by cascade, but being explicit)
+        if chunk_count > 0:
+            self.logger.info(f"Deleting {chunk_count} associated text chunks")
+            db.session.execute(
+                db.delete(SourceText).where(SourceText.corpus_id == corpus_id)
+            )
+
+        # Now delete the corpus
         db.session.delete(corpus)
         db.session.commit()
 
         self.logger.info(f"Successfully deleted corpus '{corpus_name}'")
 
+        # Build comprehensive deletion message
+        deleted_items = [f"corpus '{corpus_name}'"]
+        if chunk_count > 0:
+            deleted_items.append(f"{chunk_count} text chunks")
+        if query_count > 0:
+            deleted_items.append(f"{query_count} queries")
+
+        message = f"Successfully deleted {', '.join(deleted_items)}"
+
         return {
             'success': True,
             'corpus_name': corpus_name,
             'deleted_chunks': chunk_count,
-            'message': f"Corpus '{corpus_name}' and {chunk_count} associated chunks deleted successfully"
+            'deleted_queries': query_count,
+            'message': message
         }
 
 

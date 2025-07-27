@@ -194,12 +194,11 @@ def ask_question():
             flash(f'Corpus "{selected_corpus.name}" is not ready for queries (status: {selected_corpus.processing_status})', 'error')
             return redirect(url_for('rag.index'))
 
-        # Perform semantic search with user-specified threshold
-        search_results = rag_service.semantic_search(
+        # Perform hybrid search combining semantic, trigram, full-text, and phonetic matching
+        search_results = rag_service.hybrid_search(
             query_text=question,
             corpus_id=corpus_id,
-            limit=5,
-            similarity_threshold=threshold_float
+            limit=5
         )
 
         if not search_results:

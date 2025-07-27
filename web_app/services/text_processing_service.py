@@ -4,8 +4,12 @@ Enhanced text processing service for Family Wiki Tools
 Provides improved text cleaning and smart chunking using:
 - Dutch genealogy-specific text cleaning
 - LangChain RecursiveCharacterTextSplitter with generous overlap
+- Daitch-Mokotoff Soundex generation for genealogy name matching
 """
 
+import re
+
+from abydos.phonetic import DaitchMokotoff
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from web_app.services.exceptions import handle_service_exceptions
@@ -21,6 +25,7 @@ class TextProcessingService:
 
     def __init__(self):
         self.logger = get_project_logger(__name__)
+        self.dm_soundex = DaitchMokotoff()
 
     @handle_service_exceptions(logger)
     def clean_text_for_rag(self, raw_text: str, *, spellfix: bool = True, remove_headers: bool = True) -> str:
@@ -172,3 +177,42 @@ class TextProcessingService:
             'chunks': chunks,
             'stats': stats
         }
+
+    @handle_service_exceptions(logger)
+    def generate_daitch_mokotoff_codes(self, text: str) -> list[str]:
+        """
+        Generate Daitch-Mokotoff Soundex codes from text for genealogy name matching
+        
+        Args:
+            text: Input text to extract names and generate soundex codes
+            
+        Returns:
+            List of unique DM soundex codes found in the text
+        """
+        # Extract potential names from text (words that start with capital letters)
+        # This is a simple heuristic for genealogy texts
+        name_pattern = r'\b[A-Z][a-z]{2,}\b'  # Capitalized words with 3+ letters
+        potential_names = re.findall(name_pattern, text)
+
+        dm_codes = set()
+
+        for name in potential_names:
+            try:
+                # Generate DM codes for this name
+                codes = self.dm_soundex.encode(name)
+                # DM soundex can return multiple codes, handle string, list, tuple, or set
+                if isinstance(codes, str):
+                    if codes:  # Only add non-empty codes
+                        dm_codes.add(codes)
+                elif isinstance(codes, (list, tuple, set)):
+                    for code in codes:
+                        if code:  # Only add non-empty codes
+                            dm_codes.add(str(code))
+            except Exception as e:
+                self.logger.warning(f"Failed to generate DM codes for '{name}': {e}")
+                continue
+
+        unique_codes = list(dm_codes)
+        self.logger.debug(f"Generated {len(unique_codes)} unique DM codes from {len(potential_names)} potential names")
+
+        return unique_codes

@@ -188,7 +188,8 @@ class TestSimplifiedRAGBlueprint:
             'success': True,
             'corpus_name': 'Test Corpus',
             'deleted_chunks': 5,
-            'message': 'Corpus "Test Corpus" and 5 associated chunks deleted successfully'
+            'deleted_queries': 0,
+            'message': 'Successfully deleted corpus "Test Corpus", 5 text chunks'
         }
 
         response = client.post(f'/rag/corpora/{corpus.id}/delete')

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import numpy as np
 from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as POSTGRESQL_UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.types import CHAR, TypeDecorator
@@ -101,6 +102,10 @@ class SourceText(db.Model):
     embedding_model = db.Column(db.String(100))
     token_count = db.Column(db.Integer)
 
+    # Additional search fields for hybrid RAG
+    content_tsvector = db.Column(TSVECTOR)  # PostgreSQL tsvector for full-text search
+    dm_codes = db.Column(ARRAY(db.String))  # PostgreSQL array of Daitch-Mokotoff Soundex codes
+
     # Metadata
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
@@ -115,6 +120,12 @@ class SourceText(db.Model):
         db.Index('idx_source_text_file_page', 'filename', 'page_number'),
         # pgvector index for similarity search
         db.Index('idx_source_text_embedding', 'embedding', postgresql_using='ivfflat', postgresql_ops={'embedding': 'vector_cosine_ops'}),
+        # GIN index for trigram similarity using pg_trgm
+        db.Index('idx_source_text_content_gin_trgm', 'content', postgresql_using='gin', postgresql_ops={'content': 'gin_trgm_ops'}),
+        # GIN index for full-text search on tsvector
+        db.Index('idx_source_text_tsvector_gin', 'content_tsvector', postgresql_using='gin'),
+        # GIN index for Daitch-Mokotoff codes array overlap
+        db.Index('idx_source_text_dm_codes_gin', 'dm_codes', postgresql_using='gin'),
     )
 
     @staticmethod
