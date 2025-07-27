@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Chat with Family History - Family Wiki Tools{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    <div style="margin-bottom: 2rem;">
+        <h2>💬 Chat with Family History</h2>
+        <p style="color: #6c757d;">Have a conversation with your family history documents using contextual follow-up questions.</p>
+        
+        <!-- Navigation Links -->
+        <div style="margin: 1rem 0; display: flex; gap: 1rem; flex-wrap: wrap;">
+            <a href="{{ url_for('rag.index') }}" class="btn btn-secondary">← Simple Query</a>
+            <a href="{{ url_for('rag.corpora_list') }}" class="btn btn-secondary">Manage Corpora</a>
+        </div>
+    </div>
+
+    <!-- Configuration Section -->
+    <div class="tool-card" style="margin-bottom: 2rem;">
+        <h3>🔧 Chat Configuration</h3>
+        <p>Select your corpus and prompt settings for the conversation.</p>
+        
+        <form id="config-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: end;">
+            <!-- Corpus Selection -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="corpus_id">Select Corpus:</label>
+                <select id="corpus_id" name="corpus_id" class="form-control" required>
+                    <option value="">Choose a corpus...</option>
+                    {% for corpus in corpora %}
+                        {% if corpus.processing_status == 'completed' %}
+                            <option value="{{ corpus.id }}">
+                                {{ corpus.name }} ({{ corpus.chunk_count }} chunks)
+                            </option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Prompt Selection -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="prompt_id">RAG Prompt:</label>
+                <select id="prompt_id" name="prompt_id" class="form-control" required>
+                    <option value="">Choose a prompt...</option>
+                    {% for prompt in rag_prompts %}
+                        <option value="{{ prompt.id }}">{{ prompt.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+
+        {% if not corpora or not rag_prompts %}
+        <div class="warning-box" style="margin-top: 1rem;">
+            <h4>⚠️ Configuration Required</h4>
+            {% if not corpora %}
+            <p>No text corpora available. <a href="{{ url_for('rag.create_corpus') }}">Create a corpus</a> first to start chatting.</p>
+            {% endif %}
+            {% if not rag_prompts %}
+            <p>No RAG prompts configured. Visit the prompts management to create RAG prompts.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Chat Interface -->
+    <div class="chat-container">
+        <!-- Chat Header -->
+        <div class="chat-header">
+            <h3 class="chat-title">Family History Chat</h3>
+            <div class="chat-controls">
+                <button type="button" id="new-conversation-btn" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
+                    🔄 New Conversation
+                </button>
+                <button type="button" id="clear-chat-btn" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
+                    🗑️ Clear Chat
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="chat-messages" class="chat-messages">
+            <div class="conversation-empty">
+                <h3>Start a Conversation</h3>
+                <p>Ask questions about your family history corpus. You can ask follow-up questions and I'll remember the context of our conversation.</p>
+            </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="chat-input-container">
+            <form id="chat-form" class="chat-form">
+                <div class="chat-input-group">
+                    <textarea 
+                        id="chat-textarea" 
+                        class="chat-textarea" 
+                        placeholder="Ask a question about your family history... (Ctrl+Enter to send)"
+                        rows="2"
+                        {% if not corpora or not rag_prompts %}disabled{% endif %}
+                    ></textarea>
+                    
+                    <div class="chat-options">
+                        <div class="chat-threshold-group">
+                            <label for="similarity_threshold">Sensitivity:</label>
+                            <select id="similarity_threshold" name="similarity_threshold" class="chat-threshold-select">
+                                <option value="0.75">Strict (0.75)</option>
+                                <option value="0.65">Balanced (0.65)</option>
+                                <option value="0.55" selected>Broad (0.55)</option>
+                                <option value="0.45">Very Broad (0.45)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <button 
+                    type="submit" 
+                    id="send-button" 
+                    class="chat-send-btn"
+                    {% if not corpora or not rag_prompts %}disabled{% endif %}
+                >
+                    Send
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div class="tool-info" style="margin-top: 2rem;">
+        <h3>💡 Chat Tips</h3>
+        <ul>
+            <li><strong>Follow-up Questions:</strong> Ask related questions in the same conversation for context-aware responses</li>
+            <li><strong>Search Sensitivity:</strong> Adjust the sensitivity setting to get more or fewer results</li>
+            <li><strong>Keyboard Shortcuts:</strong> Use Ctrl+Enter to send messages quickly</li>
+            <li><strong>New Conversation:</strong> Click "New Conversation" to start fresh without previous context</li>
+            <li><strong>Sources:</strong> Each response shows which text chunks were used and their similarity scores</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

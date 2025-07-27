@@ -48,6 +48,17 @@
                 <small class="form-help">Ask questions about people, places, events, or relationships mentioned in the source texts.</small>
             </div>
             
+            <div class="form-group">
+                <label for="similarity_threshold">Search Sensitivity:</label>
+                <select id="similarity_threshold" name="similarity_threshold" class="form-control">
+                    <option value="0.75">Strict (0.75) - Only very similar matches</option>
+                    <option value="0.65">Balanced (0.65) - Good balance of quality and quantity</option>
+                    <option value="0.55" selected>Broad (0.55) - More results, may include less relevant</option>
+                    <option value="0.45">Very Broad (0.45) - Maximum results, lowest quality threshold</option>
+                </select>
+                <small class="form-help">Higher values return fewer but more precise results. Lower values return more results but may include less relevant information.</small>
+            </div>
+            
             <button type="submit" class="btn btn-primary" id="submit-btn">
                 <span id="submit-text">Ask Question</span>
                 <span id="submit-spinner" class="spinner-border spinner-border-sm" style="display: none;" role="status" aria-hidden="true"></span>

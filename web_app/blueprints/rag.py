@@ -2,11 +2,11 @@
 RAG (Retrieval-Augmented Generation) blueprint for querying source documents
 """
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 from web_app.blueprints.error_handling import handle_blueprint_errors, safe_task_submit
 from web_app.database import db
-from web_app.database.models import TextCorpus
+from web_app.database.models import Query, TextCorpus
 from web_app.services.embedding_models import (
     DEFAULT_EMBEDDING_MODEL,
     get_available_embedding_models,
@@ -139,6 +139,7 @@ def ask_question():
         question = request.form.get('question', '').strip()
         corpus_id = request.form.get('corpus_id', '').strip()
         prompt_id = request.form.get('prompt_id', '').strip()
+        similarity_threshold = request.form.get('similarity_threshold', '0.55').strip()
 
         if not question:
             flash('Question is required', 'error')
@@ -150,6 +151,15 @@ def ask_question():
 
         if not prompt_id:
             flash('Please select a RAG prompt to use', 'error')
+            return redirect(url_for('rag.index'))
+
+        # Validate and convert similarity threshold
+        try:
+            threshold_float = float(similarity_threshold)
+            if not (0.0 <= threshold_float <= 1.0):
+                raise ValueError("Threshold must be between 0.0 and 1.0")
+        except ValueError:
+            flash('Invalid similarity threshold value', 'error')
             return redirect(url_for('rag.index'))
 
         rag_service = RAGService()
@@ -164,16 +174,33 @@ def ask_question():
             flash(f'Corpus "{selected_corpus.name}" is not ready for queries (status: {selected_corpus.processing_status})', 'error')
             return redirect(url_for('rag.index'))
 
+        # Perform semantic search with user-specified threshold
+        search_results = rag_service.semantic_search(
+            query_text=question,
+            corpus_id=corpus_id,
+            limit=5,
+            similarity_threshold=threshold_float
+        )
+
+        if not search_results:
+            flash(f'No relevant information found for your question with the current search sensitivity ({threshold_float}). Try lowering the sensitivity for broader results.', 'warning')
+            return redirect(url_for('rag.index'))
+
         # Ask the question using simplified method
         result = rag_service.ask_question(
             question=question,
             prompt_id=prompt_id,
-            corpus_id=corpus_id
+            corpus_id=corpus_id,
+            similarity_threshold=threshold_float
         )
 
         # Store result in session or flash for display
         # For now, we'll use flash to show the answer
+        chunk_count = len(result["retrieved_chunks"])
+        avg_similarity = sum(result["similarity_scores"]) / len(result["similarity_scores"]) if result["similarity_scores"] else 0
+
         flash(f'Answer: {result["answer"]}', 'success')
+        flash(f'Search info: Found {chunk_count} relevant chunks with average similarity {avg_similarity:.2f} using threshold {threshold_float}', 'info')
         return redirect(url_for('rag.index'))
 
     except ValidationError as e:
@@ -190,5 +217,120 @@ def ask_question():
         flash('Database error occurred. Please try again.', 'error')
 
     return redirect(url_for('rag.index'))
+
+
+@rag.route('/chat')
+def chat_interface():
+    """Chat-style conversational RAG interface"""
+    rag_service = RAGService()
+    corpora = rag_service.get_all_corpora()
+
+    # Get RAG prompts for the user to choose from
+    prompt_service = PromptService()
+    rag_prompts = prompt_service.get_all_prompts(prompt_type='rag')
+
+    return render_template('rag/chat.html',
+                         corpora=corpora,
+                         rag_prompts=rag_prompts)
+
+
+@rag.route('/chat/ask', methods=['POST'])
+@handle_blueprint_errors()
+def chat_ask():
+    """Handle conversational RAG queries with context"""
+    try:
+        question = request.form.get('question', '').strip()
+        corpus_id = request.form.get('corpus_id', '').strip()
+        prompt_id = request.form.get('prompt_id', '').strip()
+        similarity_threshold = request.form.get('similarity_threshold', '0.55').strip()
+        conversation_id = request.form.get('conversation_id', '').strip() or None
+        message_sequence = int(request.form.get('message_sequence', '1'))
+
+        # Validate required fields
+        if not question:
+            return jsonify({'success': False, 'error': 'Question is required'})
+
+        if not corpus_id:
+            return jsonify({'success': False, 'error': 'Please select a corpus to query'})
+
+        if not prompt_id:
+            return jsonify({'success': False, 'error': 'Please select a RAG prompt to use'})
+
+        # Validate and convert similarity threshold
+        try:
+            threshold_float = float(similarity_threshold)
+            if not (0.0 <= threshold_float <= 1.0):
+                raise ValueError("Threshold must be between 0.0 and 1.0")
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid similarity threshold value'})
+
+        # Validate corpus exists and is ready
+        selected_corpus = db.session.get(TextCorpus, corpus_id)
+        if not selected_corpus:
+            return jsonify({'success': False, 'error': 'Selected corpus not found'})
+
+        if selected_corpus.processing_status != 'completed':
+            return jsonify({'success': False, 'error': f'Corpus "{selected_corpus.name}" is not ready for queries'})
+
+        # Create or get conversation ID
+        if not conversation_id:
+            conversation_id = Query.start_new_conversation(corpus_id)
+            message_sequence = 1
+        else:
+            # Convert string UUID back to UUID object
+            import uuid
+            conversation_id = uuid.UUID(conversation_id)
+
+        # Perform RAG query with conversation context
+        rag_service = RAGService()
+        result = rag_service.ask_question(
+            question=question,
+            prompt_id=prompt_id,
+            corpus_id=corpus_id,
+            similarity_threshold=threshold_float,
+            conversation_id=str(conversation_id) if conversation_id else None
+        )
+
+        # Store query in database with conversation context
+        query = Query(
+            corpus_id=corpus_id,
+            conversation_id=conversation_id,
+            message_sequence=message_sequence,
+            question=question,
+            answer=result['answer'],
+            retrieved_chunks=result.get('retrieved_chunks', []),
+            similarity_scores=result.get('similarity_scores', []),
+            prompt_used=result.get('prompt_name', ''),
+            status='completed'
+        )
+
+        db.session.add(query)
+        db.session.commit()
+
+        # Return successful response
+        return jsonify({
+            'success': True,
+            'answer': result['answer'],
+            'retrieved_chunks': result.get('retrieved_chunks', []),
+            'similarity_scores': result.get('similarity_scores', []),
+            'conversation_id': str(conversation_id),
+            'message_sequence': message_sequence + 1  # Next sequence number
+        })
+
+    except ValidationError as e:
+        return jsonify({'success': False, 'error': f'Invalid input: {str(e)}'})
+    except NotFoundError as e:
+        return jsonify({'success': False, 'error': f'Resource not found: {str(e)}'})
+    except ConnectionError:
+        return jsonify({'success': False, 'error': 'Unable to connect to language model service'})
+    except TimeoutError:
+        return jsonify({'success': False, 'error': 'Request timed out'})
+    except ExternalServiceError:
+        return jsonify({'success': False, 'error': 'Language model service is currently unavailable'})
+    except DatabaseError:
+        return jsonify({'success': False, 'error': 'Database error occurred'})
+    except Exception as e:
+        logger.error(f"Unexpected error in chat_ask: {str(e)}")
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'})
 
 

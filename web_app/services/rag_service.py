@@ -10,7 +10,7 @@ import requests
 from flask import current_app
 
 from web_app.database import db
-from web_app.database.models import ExtractionPrompt, SourceText, TextCorpus
+from web_app.database.models import ExtractionPrompt, SourceText, TextCorpus, Query
 from web_app.services.exceptions import (
     ExternalServiceError,
     NotFoundError,
@@ -253,7 +253,7 @@ class RAGService:
 
 
     @handle_service_exceptions(logger)
-    def semantic_search(self, query_text: str, corpus_id: str = None, limit: int = 5) -> list[tuple[SourceText, float]]:
+    def semantic_search(self, query_text: str, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple[SourceText, float]]:
         """Perform semantic search on source text"""
         # Use active corpus if none specified, get corpus to determine embedding model
         if not corpus_id:
@@ -283,21 +283,81 @@ class RAGService:
             query_embedding=query_embedding,
             corpus_id=corpus_id,
             limit=limit,
-            similarity_threshold=0.7
+            similarity_threshold=similarity_threshold
         )
 
         return results
 
     @handle_service_exceptions(logger)
-    def ask_question(self, question: str, prompt_id: str, corpus_id: str = None, max_chunks: int = 5) -> dict:
+    def conversation_aware_search(self, question: str, conversation_id: str = None, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple[SourceText, float]]:
         """
-        Simplified RAG query that bypasses QuerySession complexity
+        Perform semantic search with conversation context awareness
+        
+        Args:
+            question: Current question to search for
+            conversation_id: UUID of the conversation for context (optional)
+            corpus_id: ID of corpus to search (uses active if None)
+            limit: Maximum number of chunks to retrieve
+            similarity_threshold: Minimum similarity threshold
+            
+        Returns:
+            List of (SourceText, similarity_score) tuples
+        """
+        # Start with the current question
+        search_query = question
+        
+        # Add conversation context if available
+        if conversation_id:
+            try:
+                # Convert string UUID to UUID object if needed
+                if isinstance(conversation_id, str):
+                    conversation_id = uuid.UUID(conversation_id)
+                
+                # Get previous queries in this conversation
+                previous_queries = Query.get_conversation(conversation_id)
+                
+                if previous_queries:
+                    # Combine recent conversation context with current question
+                    # Take last 2-3 questions/answers for context (to avoid overwhelming the search)
+                    recent_context = []
+                    for query in previous_queries[-3:]:  # Last 3 exchanges
+                        if query.question:
+                            recent_context.append(f"Previous Q: {query.question}")
+                        if query.answer:
+                            # Take first 100 chars of answer to avoid too much text
+                            answer_preview = query.answer[:100] + "..." if len(query.answer) > 100 else query.answer
+                            recent_context.append(f"Previous A: {answer_preview}")
+                    
+                    if recent_context:
+                        # Combine context with current question, giving more weight to current question
+                        context_text = " ".join(recent_context)
+                        search_query = f"{question} Context: {context_text}"
+                        
+            except Exception as e:
+                # If there's any issue with conversation context, fall back to simple search
+                self.logger.warning(f"Error processing conversation context: {e}")
+                search_query = question
+        
+        # Perform semantic search with the enhanced query
+        return self.semantic_search(
+            query_text=search_query,
+            corpus_id=corpus_id,
+            limit=limit,
+            similarity_threshold=similarity_threshold
+        )
+
+    @handle_service_exceptions(logger)
+    def ask_question(self, question: str, prompt_id: str, corpus_id: str = None, max_chunks: int = 5, similarity_threshold: float = 0.55, conversation_id: str = None) -> dict:
+        """
+        Enhanced RAG query with optional conversation awareness
 
         Args:
             question: The question to ask
             prompt_id: RAG prompt to use (required)
             corpus_id: ID of corpus to search (uses active if None)
             max_chunks: Maximum number of chunks to retrieve
+            similarity_threshold: Minimum similarity threshold for search results
+            conversation_id: UUID of conversation for context-aware search (optional)
 
         Returns:
             dict: Contains answer, retrieved_chunks, similarity_scores, and metadata
@@ -316,12 +376,22 @@ class RAGService:
             if not corpus:
                 raise NotFoundError(f"Corpus not found: {corpus_id}")
 
-        # Perform semantic search
-        search_results = self.semantic_search(
-            query_text=question,
-            corpus_id=corpus_id,
-            limit=max_chunks
-        )
+        # Perform semantic search - use conversation-aware search if conversation_id provided
+        if conversation_id:
+            search_results = self.conversation_aware_search(
+                question=question,
+                conversation_id=conversation_id,
+                corpus_id=corpus_id,
+                limit=max_chunks,
+                similarity_threshold=similarity_threshold
+            )
+        else:
+            search_results = self.semantic_search(
+                query_text=question,
+                corpus_id=corpus_id,
+                limit=max_chunks,
+                similarity_threshold=similarity_threshold
+            )
 
         if not search_results:
             return {

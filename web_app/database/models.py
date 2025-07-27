@@ -149,32 +149,78 @@ class SourceText(db.Model):
     @classmethod
     def find_similar(cls, query_embedding, corpus_id=None, limit=5, similarity_threshold=0.7):
         """Find text chunks similar to the query embedding using cosine similarity"""
-        query = cls.query.filter(cls.embedding.isnot(None))
+        from sqlalchemy import text
 
+        # Convert numpy array to list for pgvector compatibility
+        if hasattr(query_embedding, 'tolist'):
+            query_embedding_list = query_embedding.tolist()
+        elif isinstance(query_embedding, list):
+            query_embedding_list = query_embedding
+        else:
+            query_embedding_list = list(query_embedding)
+
+        # Create vector string for pgvector (format: '[1,2,3,...]')
+        vector_str = '[' + ','.join(map(str, query_embedding_list)) + ']'
+
+        # Build SQL query with proper pgvector vector casting
+        # Use string formatting for the vector literal to avoid parameter binding issues
+        base_query = f"""
+            SELECT id, corpus_id, filename, page_number, chunk_number, content, 
+                   content_hash, embedding, embedding_model, token_count, 
+                   created_at, updated_at,
+                   embedding <=> '{vector_str}'::vector as distance
+            FROM source_texts 
+            WHERE embedding IS NOT NULL
+        """
+
+        params = {}
         if corpus_id:
-            query = query.filter(cls.corpus_id == corpus_id)
+            base_query += " AND corpus_id = :corpus_id"
+            params['corpus_id'] = corpus_id
 
-        # Use pgvector cosine distance (1 - cosine_similarity)
-        # Lower distance = higher similarity
-        query = query.order_by(cls.embedding.cosine_distance(query_embedding))
+        base_query += f" ORDER BY embedding <=> '{vector_str}'::vector"
 
         if limit:
-            query = query.limit(limit)
+            base_query += " LIMIT :limit_val"
+            params['limit_val'] = limit
 
-        results = query.all()
+        sql_query = text(base_query)
+
+        # Execute query
+        result = db.session.execute(sql_query, params)
+        rows = result.fetchall()
+
+        # Convert rows back to SourceText objects
+        chunks = []
+        for row in rows:
+            chunk = SourceText()
+            chunk.id = row.id
+            chunk.corpus_id = row.corpus_id
+            chunk.filename = row.filename
+            chunk.page_number = row.page_number
+            chunk.chunk_number = row.chunk_number
+            chunk.content = row.content
+            chunk.content_hash = row.content_hash
+            chunk.embedding = row.embedding
+            chunk.embedding_model = row.embedding_model
+            chunk.token_count = row.token_count
+            chunk.created_at = row.created_at
+            chunk.updated_at = row.updated_at
+
+            # Calculate cosine similarity (1 - cosine_distance)
+            similarity = 1.0 - row.distance if row.distance is not None else None
+
+            chunks.append((chunk, similarity))
 
         # Filter by similarity threshold if specified
         if similarity_threshold:
             filtered_results = []
-            for chunk in results:
-                # Calculate cosine similarity using our helper method
-                similarity = cls.calculate_cosine_similarity(chunk.embedding, query_embedding)
-
-                if similarity >= similarity_threshold:
+            for chunk, similarity in chunks:
+                if similarity is not None and similarity >= similarity_threshold:
                     filtered_results.append((chunk, similarity))
             return filtered_results
 
-        return [(chunk, None) for chunk in results]
+        return chunks
 
     def __repr__(self):
         return f'<SourceText {self.filename}:{self.page_number}:{self.chunk_number}>'
@@ -187,6 +233,10 @@ class Query(db.Model):
 
     id = db.Column(UUID(), primary_key=True, default=uuid.uuid4)
     corpus_id = db.Column(UUID(), db.ForeignKey('text_corpora.id'), nullable=False)
+
+    # Conversation grouping (optional - for chat-style interactions)
+    conversation_id = db.Column(UUID(), nullable=True)  # Groups related queries together
+    message_sequence = db.Column(db.Integer, default=1)  # Order within conversation
 
     # Question and response
     question = db.Column(db.Text, nullable=False)
@@ -210,6 +260,40 @@ class Query(db.Model):
 
     # Relationships
     corpus = db.relationship('TextCorpus')
+
+    @classmethod
+    def get_conversation(cls, conversation_id):
+        """Get all queries in a conversation, ordered by sequence"""
+        return cls.query.filter_by(conversation_id=conversation_id).order_by(cls.message_sequence).all()
+
+    @classmethod
+    def start_new_conversation(cls, corpus_id):
+        """Start a new conversation and return the conversation_id"""
+        import uuid
+        return uuid.uuid4()
+
+    @classmethod
+    def get_next_sequence_number(cls, conversation_id):
+        """Get the next sequence number for a conversation"""
+        if not conversation_id:
+            return 1
+        latest = cls.query.filter_by(conversation_id=conversation_id).order_by(cls.message_sequence.desc()).first()
+        return (latest.message_sequence + 1) if latest else 1
+
+    @property
+    def is_part_of_conversation(self):
+        """Check if this query is part of a conversation"""
+        return self.conversation_id is not None
+
+    @property
+    def conversation_context(self):
+        """Get previous queries in this conversation for context"""
+        if not self.conversation_id:
+            return []
+        return self.query.filter(
+            Query.conversation_id == self.conversation_id,
+            Query.message_sequence < self.message_sequence
+        ).order_by(Query.message_sequence).all()
 
     def __repr__(self):
         return f'<Query {self.question[:50]}...>'

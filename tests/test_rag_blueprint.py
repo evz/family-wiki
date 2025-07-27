@@ -89,7 +89,8 @@ class TestSimplifiedRAGBlueprint:
         mock_rag_instance.ask_question.assert_called_once_with(
             question='What is genealogy?',
             prompt_id=str(prompt.id),
-            corpus_id=str(corpus.id)
+            corpus_id=str(corpus.id),
+            similarity_threshold=0.55
         )
 
     def test_ask_question_missing_question(self, client, db):
