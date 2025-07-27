@@ -174,3 +174,60 @@ class TestSimplifiedRAGBlueprint:
 
             response = client.get('/rag/corpora/create')
             assert response.status_code == 200
+
+    def test_delete_corpus_success(self, client, db, mock_rag_service_class):
+        """Test successful corpus deletion"""
+        # Create test corpus
+        corpus = TextCorpus(name="Test Corpus", description="Test", processing_status="completed")
+        db.session.add(corpus)
+        db.session.commit()
+
+        # Mock RAG service deletion
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.delete_corpus.return_value = {
+            'success': True,
+            'corpus_name': 'Test Corpus',
+            'deleted_chunks': 5,
+            'message': 'Corpus "Test Corpus" and 5 associated chunks deleted successfully'
+        }
+
+        response = client.post(f'/rag/corpora/{corpus.id}/delete')
+
+        # Should redirect to corpora list
+        assert response.status_code == 302
+        assert response.location.endswith('/rag/corpora')
+
+        # Verify service was called with correct ID
+        mock_rag_instance.delete_corpus.assert_called_once_with(str(corpus.id))
+
+    def test_delete_corpus_not_found(self, client, db, mock_rag_service_class):
+        """Test deletion of non-existent corpus"""
+        from web_app.services.exceptions import NotFoundError
+
+        # Mock RAG service to raise NotFoundError
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.delete_corpus.side_effect = NotFoundError("Corpus not found")
+
+        fake_id = "00000000-0000-0000-0000-000000000000"
+        response = client.post(f'/rag/corpora/{fake_id}/delete')
+
+        # Should redirect to corpora list
+        assert response.status_code == 302
+        assert response.location.endswith('/rag/corpora')
+
+    def test_delete_corpus_error(self, client, db, mock_rag_service_class):
+        """Test deletion with service error"""
+        # Create test corpus
+        corpus = TextCorpus(name="Test Corpus", description="Test", processing_status="completed")
+        db.session.add(corpus)
+        db.session.commit()
+
+        # Mock RAG service to raise generic error
+        mock_rag_instance = mock_rag_service_class.return_value
+        mock_rag_instance.delete_corpus.side_effect = Exception("Database error")
+
+        response = client.post(f'/rag/corpora/{corpus.id}/delete')
+
+        # Should redirect to corpora list
+        assert response.status_code == 302
+        assert response.location.endswith('/rag/corpora')

@@ -127,6 +127,26 @@ def create_corpus():
     return render_template('rag/create_corpus.html', available_models=available_models)
 
 
+@rag.route('/corpora/<corpus_id>/delete', methods=['POST'])
+@handle_blueprint_errors()
+def delete_corpus(corpus_id):
+    """Delete a corpus and all its associated data"""
+    try:
+        rag_service = RAGService()
+        result = rag_service.delete_corpus(corpus_id)
+
+        flash(result['message'], 'success')
+        return redirect(url_for('rag.corpora_list'))
+
+    except NotFoundError:
+        flash('Corpus not found', 'error')
+        return redirect(url_for('rag.corpora_list'))
+    except Exception as e:
+        logger.error(f"Error deleting corpus {corpus_id}: {str(e)}")
+        flash('An error occurred while deleting the corpus', 'error')
+        return redirect(url_for('rag.corpora_list'))
+
+
 
 
 

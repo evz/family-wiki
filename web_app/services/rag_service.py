@@ -10,13 +10,13 @@ import requests
 from flask import current_app
 
 from web_app.database import db
-from web_app.database.models import ExtractionPrompt, SourceText, TextCorpus, Query
-from web_app.services.text_processing_service import TextProcessingService
+from web_app.database.models import ExtractionPrompt, Query, SourceText, TextCorpus
 from web_app.services.exceptions import (
     ExternalServiceError,
     NotFoundError,
     handle_service_exceptions,
 )
+from web_app.services.text_processing_service import TextProcessingService
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -120,7 +120,7 @@ class RAGService:
         """Split text into overlapping chunks using enhanced text processing"""
         # Convert chunk_overlap to percentage for the new service
         overlap_percentage = chunk_overlap / chunk_size if chunk_size > 0 else 0.2
-        
+
         # Use the enhanced text processing service
         return self.text_processor.smart_chunk_text(
             text=text,
@@ -152,7 +152,7 @@ class RAGService:
 
         # Clean the text before processing
         cleaned_content = self.text_processor.clean_text_for_rag(content)
-        
+
         # Generate content hash for deduplication (using cleaned content)
         content_hash = hashlib.sha256(cleaned_content.encode()).hexdigest()
 
@@ -303,17 +303,17 @@ class RAGService:
         """
         # Start with the current question
         search_query = question
-        
+
         # Add conversation context if available
         if conversation_id:
             try:
                 # Convert string UUID to UUID object if needed
                 if isinstance(conversation_id, str):
                     conversation_id = uuid.UUID(conversation_id)
-                
+
                 # Get previous queries in this conversation
                 previous_queries = Query.get_conversation(conversation_id)
-                
+
                 if previous_queries:
                     # Combine recent conversation context with current question
                     # Take last 2-3 questions/answers for context (to avoid overwhelming the search)
@@ -325,17 +325,17 @@ class RAGService:
                             # Take first 100 chars of answer to avoid too much text
                             answer_preview = query.answer[:100] + "..." if len(query.answer) > 100 else query.answer
                             recent_context.append(f"Previous A: {answer_preview}")
-                    
+
                     if recent_context:
                         # Combine context with current question, giving more weight to current question
                         context_text = " ".join(recent_context)
                         search_query = f"{question} Context: {context_text}"
-                        
+
             except Exception as e:
                 # If there's any issue with conversation context, fall back to simple search
                 self.logger.warning(f"Error processing conversation context: {e}")
                 search_query = question
-        
+
         # Perform semantic search with the enhanced query
         return self.semantic_search(
             query_text=search_query,
@@ -457,6 +457,47 @@ class RAGService:
             'chunk_count': chunk_count,
             'unique_files': unique_files,
             'embedding_model': corpus.embedding_model
+        }
+
+    @handle_service_exceptions(logger)
+    def delete_corpus(self, corpus_id: str) -> dict:
+        """
+        Delete a corpus and all its associated source texts
+        
+        Args:
+            corpus_id: UUID of the corpus to delete
+            
+        Returns:
+            Dict with deletion results and statistics
+        """
+        # Convert string UUID to UUID object if needed
+        if isinstance(corpus_id, str):
+            corpus_id = uuid.UUID(corpus_id)
+
+        corpus = db.session.get(TextCorpus, corpus_id)
+        if not corpus:
+            raise NotFoundError(f"Corpus not found: {corpus_id}")
+
+        # Get statistics before deletion
+        chunk_count = db.session.execute(
+            db.select(db.func.count(SourceText.id)).filter_by(corpus_id=corpus_id)
+        ).scalar()
+
+        corpus_name = corpus.name
+
+        self.logger.info(f"Deleting corpus '{corpus_name}' with {chunk_count} chunks")
+
+        # Delete the corpus (cascade will delete associated SourceText records)
+        db.session.delete(corpus)
+        db.session.commit()
+
+        self.logger.info(f"Successfully deleted corpus '{corpus_name}'")
+
+        return {
+            'success': True,
+            'corpus_name': corpus_name,
+            'deleted_chunks': chunk_count,
+            'message': f"Corpus '{corpus_name}' and {chunk_count} associated chunks deleted successfully"
         }
 
 

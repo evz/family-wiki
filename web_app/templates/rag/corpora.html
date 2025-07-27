@@ -50,6 +50,15 @@
                         <strong>Processing Error:</strong> {{ corpus.processing_error }}
                     </div>
                 {% endif %}
+                
+                <div class="corpus-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                    <button type="button" 
+                            class="btn btn-secondary" 
+                            style="font-size: 0.8rem; padding: 0.4rem 0.8rem;"
+                            onclick="confirmDelete('{{ corpus.id }}', '{{ corpus.name }}', {{ corpus.chunk_count }})">
+                        🗑️ Delete
+                    </button>
+                </div>
             </div>
         {% endfor %}
     </div>
@@ -60,4 +69,28 @@
         <a href="{{ url_for('rag.create_corpus') }}" class="btn btn-primary">Create Your First Corpus</a>
     </div>
 {% endif %}
+
+<!-- Hidden form for corpus deletion -->
+<form id="delete-form" method="POST" style="display: none;">
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmDelete(corpusId, corpusName, chunkCount) {
+    const message = `Are you sure you want to delete the corpus "${corpusName}"?\n\n` +
+                   `This will permanently remove:\n` +
+                   `• The corpus "${corpusName}"\n` +
+                   `• ${chunkCount} associated text chunks\n` +
+                   `• All embeddings and search data\n\n` +
+                   `This action cannot be undone.`;
+    
+    if (confirm(message)) {
+        const form = document.getElementById('delete-form');
+        form.action = `/rag/corpora/${corpusId}/delete`;
+        form.submit();
+    }
+}
+</script>
 {% endblock %}

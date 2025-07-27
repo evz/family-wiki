@@ -336,5 +336,66 @@ class TestRAGService:
             with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
                 rag_service.get_corpus_stats("nonexistent-id")
 
+    def test_delete_corpus_success(self, rag_service, app, db):
+        """Test successful corpus deletion"""
+        with app.app_context():
+            # Create a test corpus
+            corpus = rag_service.create_corpus("Test Deletion Corpus", "A corpus to delete")
+            corpus_id = str(corpus.id)
+
+            # Add some source text to it
+            with patch.object(rag_service, 'generate_embedding', return_value=[0.1] * 1024):
+                chunks_stored = rag_service.store_source_text(
+                    corpus_id=corpus_id,
+                    filename="test.txt",
+                    content="This is test content for deletion.",
+                    page_number=1
+                )
+                assert chunks_stored > 0
+
+            # Verify corpus and chunks exist
+            assert db.session.get(TextCorpus, corpus.id) is not None
+            chunk_count_before = db.session.execute(
+                db.select(db.func.count()).select_from(
+                    db.select(SourceText).filter_by(corpus_id=corpus.id).subquery()
+                )
+            ).scalar()
+            assert chunk_count_before > 0
+
+            # Delete the corpus
+            result = rag_service.delete_corpus(corpus_id)
+
+            # Verify deletion result
+            assert result['success'] is True
+            assert result['corpus_name'] == "Test Deletion Corpus"
+            assert result['deleted_chunks'] == chunk_count_before
+            assert "deleted successfully" in result['message']
+
+            # Verify corpus is gone
+            assert db.session.get(TextCorpus, corpus.id) is None
+
+            # Verify associated chunks are gone
+            chunk_count_after = db.session.execute(
+                db.select(db.func.count()).select_from(
+                    db.select(SourceText).filter_by(corpus_id=corpus.id).subquery()
+                )
+            ).scalar()
+            assert chunk_count_after == 0
+
+    def test_delete_corpus_not_found(self, rag_service, app, db):
+        """Test deletion of non-existent corpus"""
+        with app.app_context():
+            # Try to delete a non-existent corpus
+            fake_id = "00000000-0000-0000-0000-000000000000"
+
+            with pytest.raises(NotFoundError, match="Corpus not found"):
+                rag_service.delete_corpus(fake_id)
+
+    def test_delete_corpus_invalid_id(self, rag_service, app, db):
+        """Test deletion with invalid corpus ID"""
+        with app.app_context():
+            with pytest.raises(ValidationError, match="badly formed hexadecimal UUID string"):
+                rag_service.delete_corpus("invalid-uuid")
+
 
 
