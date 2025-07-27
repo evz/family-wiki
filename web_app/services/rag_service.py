@@ -11,6 +11,7 @@ from flask import current_app
 
 from web_app.database import db
 from web_app.database.models import ExtractionPrompt, SourceText, TextCorpus, Query
+from web_app.services.text_processing_service import TextProcessingService
 from web_app.services.exceptions import (
     ExternalServiceError,
     NotFoundError,
@@ -27,6 +28,7 @@ class RAGService:
 
     def __init__(self):
         self.logger = get_project_logger(__name__)
+        self.text_processor = TextProcessingService()
 
     def _get_ollama_config(self):
         """Get Ollama server configuration from Flask config"""
@@ -115,28 +117,16 @@ class RAGService:
 
     @handle_service_exceptions(logger)
     def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
-        """Split text into overlapping chunks"""
-        chunks = []
-        start = 0
-
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-
-            # Try to break at sentence boundaries
-            if end < len(text) and '.' in chunk:
-                last_period = chunk.rfind('.')
-                if last_period > chunk_size // 2:  # Only if period is in latter half
-                    end = start + last_period + 1
-                    chunk = text[start:end]
-
-            chunks.append(chunk.strip())
-            start = end - chunk_overlap
-
-            if start >= len(text):
-                break
-
-        return chunks
+        """Split text into overlapping chunks using enhanced text processing"""
+        # Convert chunk_overlap to percentage for the new service
+        overlap_percentage = chunk_overlap / chunk_size if chunk_size > 0 else 0.2
+        
+        # Use the enhanced text processing service
+        return self.text_processor.smart_chunk_text(
+            text=text,
+            chunk_size=chunk_size,
+            overlap_percentage=overlap_percentage
+        )
 
     @handle_service_exceptions(logger)
     def generate_embedding(self, text: str, embedding_model: str = "nomic-embed-text") -> list[float] | None:
@@ -160,8 +150,11 @@ class RAGService:
         if not corpus:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 
-        # Generate content hash for deduplication
-        content_hash = hashlib.sha256(content.encode()).hexdigest()
+        # Clean the text before processing
+        cleaned_content = self.text_processor.clean_text_for_rag(content)
+        
+        # Generate content hash for deduplication (using cleaned content)
+        content_hash = hashlib.sha256(cleaned_content.encode()).hexdigest()
 
         # Check if this content already exists
         existing = db.session.execute(
@@ -175,8 +168,13 @@ class RAGService:
             self.logger.info(f"Content already exists for {filename}:{page_number}")
             return 0
 
-        # Chunk the text
-        chunks = self.chunk_text(content, corpus.chunk_size, corpus.chunk_overlap)
+        # Chunk the cleaned text with 15% overlap (more generous than the previous 20% fixed overlap)
+        overlap_percentage = 0.15  # 15% overlap for better context preservation
+        chunks = self.text_processor.smart_chunk_text(
+            text=cleaned_content,
+            chunk_size=corpus.chunk_size,
+            overlap_percentage=overlap_percentage
+        )
         stored_count = 0
 
         for i, chunk in enumerate(chunks):

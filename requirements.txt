@@ -21,3 +21,9 @@ requests-mock==1.12.1
 ruff==0.12.3
 python-dotenv==1.1.1
 langdetect==1.0.9
+langchain-text-splitters==0.0.1
+langchain-core==0.1.53
+ftfy==6.3.1
+rapidfuzz==3.13.0
+wordfreq==3.1.1
+tenacity>=9.0.0
