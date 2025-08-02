@@ -28,14 +28,7 @@ class TestOCRDatabaseIntegration:
         """Generate sample batch ID"""
         return str(uuid.uuid4())
 
-    @pytest.fixture
-    def clean_db(self, db):
-        """Clean database before each test"""
-        OcrPage.query.delete()
-        db.session.commit()
-        yield
-        OcrPage.query.delete()
-        db.session.commit()
+    # Remove custom clean_db fixture - use the one from conftest.py
 
     def test_extract_page_number_from_filename(self, processor):
         """Test page number extraction from filename"""
@@ -86,7 +79,7 @@ class TestOCRDatabaseIntegration:
         assert result == 'unknown'
 
     @patch('web_app.pdf_processing.ocr_processor.fitz')
-    def test_pdf_to_image_invalid_file(self, mock_fitz, processor, sample_batch_id, app):
+    def test_pdf_to_image_invalid_file(self, mock_fitz, processor, sample_batch_id, app, db):
         """Test PDF to image conversion with invalid file"""
         # Create a mock document with 0 pages (simulating invalid file)
         mock_doc = Mock()
@@ -100,7 +93,7 @@ class TestOCRDatabaseIntegration:
         assert 'PDF must contain exactly 1 page, found 0 pages' in result['error']
 
     @patch('web_app.pdf_processing.ocr_processor.fitz')
-    def test_pdf_to_image_multiple_pages(self, mock_fitz, processor, sample_batch_id, app):
+    def test_pdf_to_image_multiple_pages(self, mock_fitz, processor, sample_batch_id, app, db):
         """Test PDF to image conversion with multiple pages"""
         mock_doc = Mock()
         mock_doc.__len__ = Mock(return_value=2)  # Multiple pages
@@ -158,7 +151,7 @@ class TestOCRDatabaseIntegration:
         assert result['language'] in ['en', 'unknown']  # Depends on text length
 
     @patch('web_app.pdf_processing.ocr_processor.pytesseract')
-    def test_extract_text_from_image_tesseract_error(self, mock_tesseract, processor, sample_batch_id, clean_db):
+    def test_extract_text_from_image_tesseract_error(self, mock_tesseract, processor, sample_batch_id, app, db):
         """Test text extraction with Tesseract error"""
         mock_tesseract.TesseractError = pytesseract.TesseractError
         mock_tesseract.image_to_data.side_effect = pytesseract.TesseractError(1, "OCR failed")
@@ -169,11 +162,11 @@ class TestOCRDatabaseIntegration:
         assert result['success'] is False
         assert 'OCR processing failed' in result['error']
 
-    def test_save_ocr_result_new_record(self, processor, sample_batch_id, clean_db):
+    def test_save_ocr_result_new_record(self, processor, sample_batch_id, app, db):
         """Test saving new OCR result to database"""
         pdf_path = Path("001.pdf")
 
-        result = processor._save_ocr_result(
+        result = processor.ocr_repository.save_ocr_result(
             sample_batch_id, pdf_path, 1,
             "Test text", 0.95, "en", 1500
         )
@@ -190,7 +183,7 @@ class TestOCRDatabaseIntegration:
         assert ocr_page.language == "en"
         assert ocr_page.status == "completed"
 
-    def test_save_ocr_result_update_existing(self, processor, sample_batch_id, clean_db):
+    def test_save_ocr_result_update_existing(self, processor, sample_batch_id, app, db):
         """Test updating existing OCR result in database"""
         # Create initial record
         ocr_page = OcrPage(
@@ -203,11 +196,11 @@ class TestOCRDatabaseIntegration:
             status="completed"
         )
         db.session.add(ocr_page)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         # Update with new data
         pdf_path = Path("001.pdf")
-        result = processor._save_ocr_result(
+        result = processor.ocr_repository.save_ocr_result(
             sample_batch_id, pdf_path, 1,
             "New text", 0.95, "en", 1500
         )
@@ -220,9 +213,9 @@ class TestOCRDatabaseIntegration:
         assert updated.confidence_score == 0.95
         assert updated.language == "en"
 
-    def test_save_ocr_error(self, processor, sample_batch_id, clean_db):
+    def test_save_ocr_error(self, processor, sample_batch_id, app, db):
         """Test saving OCR error to database"""
-        result = processor._save_ocr_error(sample_batch_id, "failed.pdf", 1, "Test error message")
+        result = processor.ocr_repository.save_ocr_error(sample_batch_id, "failed.pdf", 1, "Test error message")
 
         assert result['success'] is False
         assert result['error'] == "Test error message"
@@ -235,9 +228,8 @@ class TestOCRDatabaseIntegration:
 
     @patch.object(PDFOCRProcessor, '_pdf_to_image')
     @patch.object(PDFOCRProcessor, '_extract_text_from_image')
-    @patch.object(PDFOCRProcessor, '_save_ocr_result')
-    def test_process_single_page_pdf_success_flow(self, mock_save, mock_extract, mock_pdf_to_image,
-                                                  processor, sample_batch_id):
+    def test_process_single_page_pdf_success_flow(self, mock_extract, mock_pdf_to_image,
+                                                  processor, sample_batch_id, app, db):
         """Test successful end-to-end PDF processing flow"""
         # Mock successful image conversion
         mock_pdf_to_image.return_value = {'success': True, 'image': Mock()}
@@ -250,16 +242,17 @@ class TestOCRDatabaseIntegration:
             'language': 'en'
         }
 
-        # Mock successful save
-        mock_save.return_value = {'success': True}
-
         pdf_path = Path("001.pdf")
         result = processor.process_single_page_pdf_to_database(pdf_path, sample_batch_id)
 
         assert result['success'] is True
         mock_pdf_to_image.assert_called_once()
         mock_extract.assert_called_once()
-        mock_save.assert_called_once()
+        
+        # Verify data was saved to database via repository
+        ocr_page = processor.ocr_repository.get_by_batch_and_filename(sample_batch_id, "001.pdf")
+        assert ocr_page is not None
+        assert ocr_page.extracted_text == 'Test text'
 
     @patch.object(PDFOCRProcessor, '_pdf_to_image')
     def test_process_single_page_pdf_image_conversion_failure(self, mock_pdf_to_image,

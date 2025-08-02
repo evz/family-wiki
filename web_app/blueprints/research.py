@@ -5,7 +5,8 @@ import uuid
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-from web_app.blueprints.error_handling import (
+from web_app.database import db
+from web_app.blueprints.blueprint_utils import (
     get_task_status_safely,
     handle_blueprint_errors,
     safe_file_operation,
@@ -41,15 +42,16 @@ def start_research():
         logger.info(f"Started research task: {task.id}")
         return redirect(url_for('main.index'))
 
-    # Save uploaded file first
-    file_id = safe_file_operation(
-        file_repo.save_uploaded_file,
-        "research input file upload",
-        input_file, task_id, 'research', 'input'
-    )
-    if not file_id:
-        flash('Failed to save uploaded input file', 'error')
-        return redirect(url_for('main.index'))
+    # Save uploaded file first with transaction management
+    with db.session.begin():
+        file_id = safe_file_operation(
+            file_repo.save_uploaded_file,
+            "research input file upload",
+            input_file, task_id, 'research', 'input'
+        )
+        if not file_id:
+            flash('Failed to save uploaded input file', 'error')
+            return redirect(url_for('main.index'))
 
     # Start the task with the pre-generated task ID
     task = safe_task_submit(

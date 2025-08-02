@@ -5,7 +5,8 @@ import uuid
 
 from flask import Blueprint, flash, redirect, request, url_for
 
-from web_app.blueprints.error_handling import (
+from web_app.database import db
+from web_app.blueprints.blueprint_utils import (
     handle_blueprint_errors,
     safe_file_operation,
     safe_task_submit,
@@ -38,19 +39,20 @@ def start_ocr():
             logger.info(f"Started OCR task: {task.id}")
         return redirect(url_for('main.index'))
 
-    # Save uploaded files first
+    # Save uploaded files first with transaction management
     saved_files = []
-    for pdf_file in pdf_files:
-        if pdf_file.filename != '':
-            file_id = safe_file_operation(
-                file_repo.save_uploaded_file,
-                "file upload",
-                pdf_file, task_id, 'ocr', 'input'
-            )
-            if file_id:
-                saved_files.append(file_id)
-            else:
-                flash(f'Failed to save file: {pdf_file.filename}', 'error')
+    with db.session.begin():
+        for pdf_file in pdf_files:
+            if pdf_file.filename != '':
+                file_id = safe_file_operation(
+                    file_repo.save_uploaded_file,
+                    "file upload",
+                    pdf_file, task_id, 'ocr', 'input'
+                )
+                if file_id:
+                    saved_files.append(file_id)
+                else:
+                    flash(f'Failed to save file: {pdf_file.filename}', 'error')
 
     if not saved_files:
         flash('No files were successfully uploaded', 'error')

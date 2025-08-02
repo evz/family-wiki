@@ -24,6 +24,7 @@ class ExtractionTaskManager:
         self.text_file = self._get_text_file_path(text_file)
         self.extractor = None
         self.chunks = []
+        self.enriched_chunks = []
         self.all_families = []
         self.all_isolated_individuals = []
 
@@ -48,13 +49,28 @@ class ExtractionTaskManager:
         )
 
     def _load_and_split_text(self):
-        """Load text file and split into chunks"""
+        """Load text file and split into chunks using unified processor"""
         try:
             with open(self.text_file, encoding='utf-8') as f:
                 content = f.read()
 
-            self.chunks = self.extractor.split_text_intelligently(content)
-            logger.info(f"Split text into {len(self.chunks)} chunks")
+            # Use unified processor for consistent chunking with genealogical anchoring
+            from web_app.services.text_processing_service import TextProcessingService
+            text_processor = TextProcessingService()
+
+            enriched_chunks = text_processor.process_corpus_with_anchors(
+                raw_text=content,
+                chunk_size=2000,  # Slightly larger chunks for extraction
+                overlap_percentage=0.25,  # More overlap for better entity continuity
+                spellfix=True  # Enable spell correction for extraction
+            )
+
+            # Store enriched chunks for processing
+            self.enriched_chunks = enriched_chunks
+            # Keep simple chunks list for compatibility
+            self.chunks = [chunk['content'] for chunk in enriched_chunks]
+
+            logger.info(f"Split text into {len(self.chunks)} enriched chunks with genealogical context")
 
         except (OSError, UnicodeDecodeError) as e:
             logger.error(f"Failed to read text file {self.text_file}: {e}")
@@ -70,39 +86,85 @@ class ExtractionTaskManager:
             return None
 
     def _process_chunk(self, chunk_index: int, chunk_text: str, active_prompt):
-        """Process a single chunk and return extracted data"""
+        """Process a single chunk with genealogical context and return extracted data"""
         try:
-            if active_prompt:
-                chunk_data = self.extractor.extract_from_chunk(chunk_text, custom_prompt=active_prompt.prompt_text)
-            else:
-                chunk_data = self.extractor.extract_from_chunk(chunk_text)
+            # Get enriched chunk data if available
+            enriched_chunk = getattr(self, 'enriched_chunks', [None])[chunk_index] if hasattr(self, 'enriched_chunks') else None
 
-            return self._add_chunk_metadata(chunk_data, chunk_index)
+            if enriched_chunk and enriched_chunk.get('genealogical_context'):
+                # Build context-aware prompt
+                gen_context = enriched_chunk['genealogical_context']
+                context_info = []
+
+                if gen_context.get('generation_number'):
+                    context_info.append(f"Generation {gen_context['generation_number']}")
+                if gen_context.get('birth_years'):
+                    years = [str(by['year']) for by in gen_context['birth_years']]
+                    context_info.append(f"Birth years mentioned: {', '.join(years)}")
+                if gen_context.get('chunk_type') and gen_context['chunk_type'] != 'general':
+                    context_info.append(f"Content type: {gen_context['chunk_type']}")
+
+                if context_info:
+                    context_hint = f"CONTEXT: {' | '.join(context_info)}\n\n"
+                    enhanced_chunk_text = context_hint + chunk_text
+                else:
+                    enhanced_chunk_text = chunk_text
+            else:
+                enhanced_chunk_text = chunk_text
+
+            # Extract with context-enhanced prompt
+            if active_prompt:
+                chunk_data = self.extractor.extract_from_chunk(enhanced_chunk_text, custom_prompt=active_prompt.prompt_text)
+            else:
+                chunk_data = self.extractor.extract_from_chunk(enhanced_chunk_text)
+
+            return self._add_chunk_metadata(chunk_data, chunk_index, enriched_chunk)
 
         except Exception as e:
             logger.error(f"Failed to process chunk {chunk_index + 1}: {e}")
             # Return empty data for this chunk instead of failing the entire task
             return {"families": [], "isolated_individuals": []}
 
-    def _add_chunk_metadata(self, chunk_data: dict, chunk_index: int) -> dict:
-        """Add chunk metadata to extracted data"""
+    def _add_chunk_metadata(self, chunk_data: dict, chunk_index: int, enriched_chunk: dict = None) -> dict:
+        """Add chunk metadata and genealogical context to extracted data"""
+        # Get genealogical context if available
+        gen_context = enriched_chunk.get('genealogical_context', {}) if enriched_chunk else {}
+
         # Add metadata to families
         for family in chunk_data.get("families", []):
             family['chunk_id'] = chunk_index
             family['extraction_method'] = 'llm'
+            # Add genealogical context
+            if gen_context.get('generation_number'):
+                family['generation_number'] = gen_context['generation_number']
+            if gen_context.get('birth_years'):
+                family['context_birth_years'] = [by['year'] for by in gen_context['birth_years']]
+
             # Add metadata to family members
             if 'parents' in family:
                 if 'father' in family['parents'] and family['parents']['father']:
                     family['parents']['father']['chunk_id'] = chunk_index
+                    if gen_context.get('generation_number'):
+                        family['parents']['father']['generation_number'] = gen_context['generation_number']
                 if 'mother' in family['parents'] and family['parents']['mother']:
                     family['parents']['mother']['chunk_id'] = chunk_index
+                    if gen_context.get('generation_number'):
+                        family['parents']['mother']['generation_number'] = gen_context['generation_number']
             for child in family.get('children', []):
                 child['chunk_id'] = chunk_index
+                # Children are typically one generation higher than parents
+                if gen_context.get('generation_number'):
+                    child['generation_number'] = gen_context['generation_number'] + 1
 
         # Add metadata to isolated individuals
         for person in chunk_data.get("isolated_individuals", []):
             person['chunk_id'] = chunk_index
             person['extraction_method'] = 'llm'
+            # Add genealogical context
+            if gen_context.get('generation_number'):
+                person['generation_number'] = gen_context['generation_number']
+            if gen_context.get('birth_years'):
+                person['context_birth_years'] = [by['year'] for by in gen_context['birth_years']]
 
         return chunk_data
 

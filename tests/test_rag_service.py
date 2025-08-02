@@ -35,8 +35,9 @@ class TestRAGService:
             assert corpus.name == "Test Corpus"
             assert corpus.description == "A test corpus for unit tests"
             assert corpus.is_active is True
-            assert corpus.chunk_size == 1000
+            assert corpus.chunk_size == 1500  # Updated default
             assert corpus.chunk_overlap == 200
+            assert corpus.query_chunk_limit == 20  # New configurable setting
 
             # Verify it was saved to database
             saved_corpus = db.session.get(TextCorpus, corpus.id)
@@ -53,7 +54,7 @@ class TestRAGService:
             # Set corpus2 as active
             corpus1.is_active = False
             corpus2.is_active = True
-            db.session.commit()
+            db.session.flush()  # Use flush instead of commit for tests
 
             active = rag_service.get_active_corpus()
             assert active is not None
@@ -269,8 +270,8 @@ class TestRAGService:
                 page_number=1
             )
 
-            # Mock the database search
-            with patch.object(SourceText, 'find_similar') as mock_find:
+            # Mock the repository search instead of the model method
+            with patch.object(rag_service.rag_repository, 'find_similar') as mock_find:
                 mock_chunk = Mock()
                 mock_chunk.id = "chunk-id"
                 mock_chunk.content = "Test content"
@@ -321,7 +322,7 @@ class TestRAGService:
                 chunk_number=0
             )
             db.session.add(source_text)
-            db.session.commit()
+            db.session.flush()  # Use flush instead of commit for tests
 
             stats = rag_service.get_corpus_stats(str(corpus.id))
 
@@ -430,7 +431,7 @@ class TestRAGService:
             )
             db.session.add(query1)
             db.session.add(query2)
-            db.session.commit()
+            db.session.flush()  # Use flush instead of commit for tests
 
             # Verify corpus, chunks, and queries exist
             assert db.session.get(TextCorpus, corpus.id) is not None

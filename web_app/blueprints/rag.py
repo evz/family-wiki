@@ -4,9 +4,8 @@ RAG (Retrieval-Augmented Generation) blueprint for querying source documents
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
-from web_app.blueprints.error_handling import handle_blueprint_errors, safe_task_submit
-from web_app.database import db
-from web_app.database.models import Query, TextCorpus
+from web_app.blueprints.blueprint_utils import handle_blueprint_errors, safe_task_submit
+from web_app.repositories.rag_repository import RAGRepository
 from web_app.services.embedding_models import (
     DEFAULT_EMBEDDING_MODEL,
     get_available_embedding_models,
@@ -23,7 +22,7 @@ from web_app.services.exceptions import (
 from web_app.services.prompt_service import PromptService
 from web_app.services.rag_service import RAGService
 from web_app.shared.logging_config import get_project_logger
-from web_app.tasks.rag_tasks import process_corpus
+from web_app.tasks.rag_tasks import process_corpus_parallel
 
 
 logger = get_project_logger(__name__)
@@ -68,6 +67,8 @@ def create_corpus():
         name = request.form.get('name', '').strip()
         description = request.form.get('description', '').strip()
         embedding_model = request.form.get('embedding_model', DEFAULT_EMBEDDING_MODEL).strip()
+        chunk_size = request.form.get('chunk_size', '1500').strip()
+        query_chunk_limit = request.form.get('query_chunk_limit', '20').strip()
         text_file = request.files.get('text_file')
 
         # Validate required fields
@@ -82,6 +83,26 @@ def create_corpus():
         # Validate embedding model
         if not validate_embedding_model(embedding_model):
             flash('Invalid embedding model selected', 'error')
+            return render_template('rag/create_corpus.html', available_models=available_models)
+
+        # Validate chunk_size
+        try:
+            chunk_size_int = int(chunk_size)
+            if not (500 <= chunk_size_int <= 4000):
+                flash('Chunk size must be between 500 and 4000 characters', 'error')
+                return render_template('rag/create_corpus.html', available_models=available_models)
+        except ValueError:
+            flash('Invalid chunk size value', 'error')
+            return render_template('rag/create_corpus.html', available_models=available_models)
+
+        # Validate query_chunk_limit
+        try:
+            query_chunk_limit_int = int(query_chunk_limit)
+            if not (5 <= query_chunk_limit_int <= 50):
+                flash('Query chunk limit must be between 5 and 50', 'error')
+                return render_template('rag/create_corpus.html', available_models=available_models)
+        except ValueError:
+            flash('Invalid query chunk limit value', 'error')
             return render_template('rag/create_corpus.html', available_models=available_models)
 
         # Validate file type
@@ -99,20 +120,25 @@ def create_corpus():
             flash('File must be valid UTF-8 encoded text', 'error')
             return render_template('rag/create_corpus.html', available_models=available_models)
 
-        # Create corpus with raw content and selected embedding model
+        # Create corpus with all parameters through service
         rag_service = RAGService()
-        corpus = rag_service.create_corpus(name, description)
+        corpus = rag_service.create_corpus(
+            name=name, 
+            description=description,
+            embedding_model=embedding_model,
+            chunk_size=chunk_size_int,
+            query_chunk_limit=query_chunk_limit_int,
+            processing_status='pending'
+        )
 
-        # Store the raw content and embedding model in the corpus
+        # Store the raw content - this should be handled by the service too
+        # For now, we'll update this specific field directly since it's not persisted to DB
         corpus.raw_content = content
-        corpus.embedding_model = embedding_model
-        corpus.processing_status = 'pending'
-        db.session.commit()
 
-        # Start background processing task
+        # Start background processing task (parallel version)
         task = safe_task_submit(
-            process_corpus.delay,
-            "corpus processing",
+            process_corpus_parallel.delay,
+            "parallel corpus processing",
             str(corpus.id)
         )
 
@@ -183,9 +209,10 @@ def ask_question():
             return redirect(url_for('rag.index'))
 
         rag_service = RAGService()
+        rag_repository = RAGRepository()
 
         # Validate that the selected corpus exists and is ready
-        selected_corpus = db.session.get(TextCorpus, corpus_id)
+        selected_corpus = rag_repository.get_corpus_by_id(corpus_id)
         if not selected_corpus:
             flash('Selected corpus not found', 'error')
             return redirect(url_for('rag.index'))
@@ -195,10 +222,11 @@ def ask_question():
             return redirect(url_for('rag.index'))
 
         # Perform hybrid search combining semantic, trigram, full-text, and phonetic matching
+        # Uses corpus's query_chunk_limit when limit=None
         search_results = rag_service.hybrid_search(
             query_text=question,
             corpus_id=corpus_id,
-            limit=5
+            limit=None
         )
 
         if not search_results:
@@ -206,10 +234,12 @@ def ask_question():
             return redirect(url_for('rag.index'))
 
         # Ask the question using simplified method
+        # Uses corpus's query_chunk_limit when max_chunks=None
         result = rag_service.ask_question(
             question=question,
             prompt_id=prompt_id,
             corpus_id=corpus_id,
+            max_chunks=None,
             similarity_threshold=threshold_float
         )
 
@@ -284,7 +314,8 @@ def chat_ask():
             return jsonify({'success': False, 'error': 'Invalid similarity threshold value'})
 
         # Validate corpus exists and is ready
-        selected_corpus = db.session.get(TextCorpus, corpus_id)
+        rag_repository = RAGRepository()
+        selected_corpus = rag_repository.get_corpus_by_id(corpus_id)
         if not selected_corpus:
             return jsonify({'success': False, 'error': 'Selected corpus not found'})
 
@@ -293,7 +324,7 @@ def chat_ask():
 
         # Create or get conversation ID
         if not conversation_id:
-            conversation_id = Query.start_new_conversation(corpus_id)
+            conversation_id = rag_repository.start_new_conversation(corpus_id)
             message_sequence = 1
         else:
             # Convert string UUID back to UUID object
@@ -306,12 +337,13 @@ def chat_ask():
             question=question,
             prompt_id=prompt_id,
             corpus_id=corpus_id,
+            max_chunks=None,  # Uses corpus's query_chunk_limit
             similarity_threshold=threshold_float,
             conversation_id=str(conversation_id) if conversation_id else None
         )
 
-        # Store query in database with conversation context
-        query = Query(
+        # Store query in database with conversation context using repository
+        rag_repository.create_query(
             corpus_id=corpus_id,
             conversation_id=conversation_id,
             message_sequence=message_sequence,
@@ -322,9 +354,6 @@ def chat_ask():
             prompt_used=result.get('prompt_name', ''),
             status='completed'
         )
-
-        db.session.add(query)
-        db.session.commit()
 
         # Return successful response
         return jsonify({

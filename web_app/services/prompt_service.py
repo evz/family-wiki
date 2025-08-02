@@ -5,8 +5,8 @@ Service for managing LLM extraction prompts
 import uuid
 from pathlib import Path
 
-from web_app.database import db
-from web_app.database.models import ExtractionPrompt
+from web_app.repositories.rag_repository import RAGRepository
+from web_app.services.exceptions import NotFoundError, handle_service_exceptions
 from web_app.shared.logging_config import get_project_logger
 
 
@@ -16,77 +16,71 @@ logger = get_project_logger(__name__)
 class PromptService:
     """Service for managing extraction prompts"""
 
-    def get_all_prompts(self, prompt_type: str = None) -> list[ExtractionPrompt]:
-        """Get all prompts ordered by creation date, optionally filtered by type"""
-        query = db.select(ExtractionPrompt).order_by(ExtractionPrompt.created_at.desc())
-        if prompt_type:
-            query = query.filter_by(prompt_type=prompt_type)
-        return db.session.execute(query).scalars().all()
+    def __init__(self):
+        self.rag_repository = RAGRepository()
 
-    def get_prompt_by_id(self, prompt_id: str) -> ExtractionPrompt | None:
+    @handle_service_exceptions(logger)
+    def get_all_prompts(self, prompt_type: str = None):
+        """Get all prompts ordered by creation date, optionally filtered by type"""
+        return self.rag_repository.get_all_prompts(prompt_type)
+
+    @handle_service_exceptions(logger)
+    def get_prompt_by_id(self, prompt_id: str):
         """Get a prompt by its ID"""
         try:
-            uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-            return db.session.get(ExtractionPrompt, uuid_obj)
-        except ValueError:
-            logger.error(f"Invalid UUID format: {prompt_id}")
-            return None
+            return self.rag_repository.get_prompt_by_id(prompt_id)
+        except ValueError as e:
+            if "Prompt not found" in str(e):
+                raise NotFoundError(str(e)) from e
+            else:
+                # Re-raise for UUID validation errors
+                raise
 
-    def create_prompt(self, name: str, prompt_text: str, prompt_type: str = 'extraction', description: str = "", template_variables: list = None) -> ExtractionPrompt:
+    @handle_service_exceptions(logger)
+    def create_prompt(self, name: str, prompt_text: str, prompt_type: str = 'extraction', description: str = "", template_variables: list = None):
         """Create a new prompt"""
-        prompt = ExtractionPrompt(
+        prompt = self.rag_repository.create_prompt(
             name=name,
             prompt_text=prompt_text,
             prompt_type=prompt_type,
             description=description,
-            template_variables=template_variables or []
+            template_variables=template_variables
         )
-        db.session.add(prompt)
-        db.session.commit()
         logger.info(f"Created new {prompt_type} prompt: {name}")
         return prompt
 
-    def update_prompt(self, prompt_id: str, name: str = None, prompt_text: str = None,
-                     description: str = None) -> ExtractionPrompt | None:
+    def update_prompt(self, prompt_id: str, name: str = None, prompt_text: str = None, description: str = None):
         """Update an existing prompt"""
         try:
-            uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-            prompt = db.session.get(ExtractionPrompt, uuid_obj)
-            if not prompt:
-                return None
-        except ValueError:
-            logger.error(f"Invalid UUID format: {prompt_id}")
-            return None
-
-        if name is not None:
-            prompt.name = name
-        if prompt_text is not None:
-            prompt.prompt_text = prompt_text
-        if description is not None:
-            prompt.description = description
-
-        db.session.commit()
-        logger.info(f"Updated prompt: {prompt.name}")
-        return prompt
-
+            prompt = self.rag_repository.update_prompt(prompt_id, name, prompt_text, description)
+            logger.info(f"Updated prompt: {prompt.name}")
+            return prompt
+        except ValueError as e:
+            if "Prompt not found" in str(e):
+                return None  # Test expects None for nonexistent prompts
+            elif "badly formed hexadecimal UUID string" in str(e):
+                return None  # Test expects None for invalid UUID format
+            else:
+                # Re-raise other validation errors
+                raise
 
     def delete_prompt(self, prompt_id: str) -> bool:
         """Delete a prompt"""
         try:
-            uuid_obj = uuid.UUID(prompt_id) if isinstance(prompt_id, str) else prompt_id
-            prompt = db.session.get(ExtractionPrompt, uuid_obj)
-            if not prompt:
-                return False
-        except ValueError:
-            logger.error(f"Invalid UUID format: {prompt_id}")
-            return False
+            result = self.rag_repository.delete_prompt(prompt_id)
+            logger.info(f"Deleted {result['prompt_type']} prompt: {result['prompt_name']}")
+            return True
+        except ValueError as e:
+            if "Prompt not found" in str(e):
+                return False  # Test expects False for nonexistent prompts
+            elif "badly formed hexadecimal UUID string" in str(e):
+                return False  # Test expects False for invalid UUID format
+            else:
+                # Re-raise other validation errors
+                raise
 
-        db.session.delete(prompt)
-        db.session.commit()
-        logger.info(f"Deleted {prompt.prompt_type} prompt: {prompt.name}")
-        return True
-
-    def load_default_prompts(self) -> list[ExtractionPrompt]:
+    @handle_service_exceptions(logger)
+    def load_default_prompts(self):
         """Load default prompts from files during database initialization"""
         prompts_dir = Path(__file__).parent.parent / "database" / "default_prompts"
         created_prompts = []
@@ -121,19 +115,18 @@ class PromptService:
 
                 # Check if this prompt already exists (by name and type)
                 prompt_type = metadata.get("prompt_type", "extraction")
-                existing = db.session.execute(
-                    db.select(ExtractionPrompt).filter_by(name=metadata["name"], prompt_type=prompt_type)
-                ).scalar_one_or_none()
+                existing = self.rag_repository.get_prompt_by_name_and_type(metadata["name"], prompt_type)
                 if existing:
                     logger.info(f"Default prompt already exists: {metadata['name']}")
                     continue
 
-                # Create the prompt
-                prompt = self.create_prompt(
+                # Create the prompt using repository
+                prompt = self.rag_repository.create_prompt(
                     name=metadata["name"],
                     prompt_text=prompt_text,
                     prompt_type=prompt_type,
-                    description=metadata["description"]
+                    description=metadata["description"],
+                    template_variables=[]
                 )
                 created_prompts.append(prompt)
                 logger.info(f"Loaded default prompt: {metadata['name']}")
@@ -143,7 +136,8 @@ class PromptService:
 
         return created_prompts
 
-    def reset_to_default(self, prompt_name: str = "Default Dutch Genealogy Extraction") -> ExtractionPrompt | None:
+    @handle_service_exceptions(logger)
+    def reset_to_default(self, prompt_name: str = "Default Dutch Genealogy Extraction"):
         """Reset a prompt to its default content from file (useful for recovery)"""
         prompts_dir = Path(__file__).parent.parent / "database" / "default_prompts"
 
@@ -157,17 +151,22 @@ class PromptService:
             with open(prompt_file, encoding='utf-8') as f:
                 default_text = f.read().strip()
 
-            # Find existing prompt
-            prompt = db.session.execute(
-                db.select(ExtractionPrompt).filter_by(name=prompt_name)
-            ).scalar_one_or_none()
-            if not prompt:
+            # Find existing prompt by name (check extraction type first, then any type)
+            existing_prompt = self.rag_repository.get_prompt_by_name_and_type(prompt_name, "extraction")
+            if not existing_prompt:
+                # If not found as extraction type, look for any prompt with this name
+                all_prompts = self.rag_repository.get_all_prompts()
+                existing_prompt = next((p for p in all_prompts if p.name == prompt_name), None)
+                
+            if not existing_prompt:
                 logger.error(f"Prompt not found: {prompt_name}")
                 return None
 
-            # Update with default content
-            prompt.prompt_text = default_text
-            db.session.commit()
+            # Update with default content using repository
+            prompt = self.rag_repository.update_prompt(
+                prompt_id=existing_prompt.id,
+                prompt_text=default_text
+            )
             logger.info(f"Reset prompt to default: {prompt_name}")
             return prompt
 

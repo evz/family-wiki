@@ -8,7 +8,7 @@ from celery import current_app as celery_app
 from flask import Blueprint, flash, jsonify, redirect, send_file, url_for
 from kombu.exceptions import ConnectionError
 
-from web_app.blueprints.error_handling import (
+from web_app.blueprints.blueprint_utils import (
     handle_blueprint_errors,
     safe_file_operation,
 )

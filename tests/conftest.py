@@ -2,11 +2,13 @@
 Pytest configuration and fixtures for family wiki project
 """
 
+import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 
+import psycopg2
 import pytest
 
 from web_app import create_app
@@ -75,13 +77,30 @@ def sample_llm_result():
 
 
 class BaseTestConfig:
-    """Base test configuration that doesn't require environment variables"""
+    """Test configuration that requires PostgreSQL database"""
     def __init__(self):
         # App configuration
         self.secret_key = 'test-secret-key'
 
-        # Database configuration
-        self.sqlalchemy_database_uri = 'sqlite:///:memory:'
+        # Database configuration - PostgreSQL required
+        test_db_url = os.getenv('TEST_DATABASE_URL')
+        if test_db_url:
+            self.sqlalchemy_database_uri = test_db_url
+        else:
+            # Use dockerized PostgreSQL test database
+            self.sqlalchemy_database_uri = 'postgresql://family_wiki_user:family_wiki_password@localhost:5432/family_wiki_test'
+
+        # Verify PostgreSQL connection
+        try:
+            conn = psycopg2.connect(self.sqlalchemy_database_uri)
+            conn.close()
+            print(f"Using PostgreSQL test database: {self.sqlalchemy_database_uri}")
+        except Exception as e:
+            raise RuntimeError(
+                f"PostgreSQL test database not available: {e}\n"
+                "Run './setup-test-db.sh' or 'docker-compose up -d db' to start PostgreSQL"
+            )
+
         self.sqlalchemy_track_modifications = False
 
         # Celery configuration
@@ -104,15 +123,55 @@ def app():
     app = create_app(BaseTestConfig())
     return app
 
+@pytest.fixture
+def test_config():
+    """Get test configuration for checking database type"""
+    return BaseTestConfig()
+
+# All tests now require PostgreSQL - no conditional skipping needed
+
 
 @pytest.fixture
 def db(app):
-    """Create database for testing"""
+    """Create database for testing with automatic transaction rollback"""
     with app.app_context():
         # Import all models to ensure they're registered with SQLAlchemy
+        from web_app.database.models import (
+            Event,
+            ExtractionPrompt,
+            Family,
+            JobFile,
+            Marriage,
+            OcrPage,
+            Person,
+            Place,
+            Query,
+            SourceText,
+            TextCorpus,
+        )
+        
         _db.create_all()
-        yield _db
-        _db.drop_all()
+
+        # Start a transaction that will be rolled back after the test
+        transaction = _db.session.begin()
+
+        try:
+            yield _db
+        finally:
+            # Always rollback the transaction to prevent data persistence
+            try:
+                if transaction.is_active:
+                    transaction.rollback()
+            except Exception:
+                # If transaction is already closed, ensure session rollback
+                _db.session.rollback()
+            
+            # Drop all tables before closing connections
+            _db.drop_all()
+            
+            # Close all connections to prevent connection pool exhaustion
+            _db.session.close()
+            _db.engine.dispose()
 
 
 @pytest.fixture
@@ -153,6 +212,8 @@ def clean_db(db):
         JobFile.query.delete()
         ExtractionPrompt.query.delete()
 
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
     return _clean_db
+
+

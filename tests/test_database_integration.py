@@ -81,7 +81,7 @@ class TestBusinessLogicConstraints:
                 tussenvoegsel="van der"
             )
             db.session.add(person)
-            db.session.commit()
+            db.session.flush()
 
             # Test our specific Dutch name formatting
             assert person.full_name == "Johannes Wilhelmus van der Berg"
@@ -104,12 +104,12 @@ class TestBusinessLogicConstraints:
             child2 = Person(given_names="Anna", surname="Berg")
 
             db.session.add_all([father, mother, child1, child2])
-            db.session.commit()
+            db.session.flush()
 
             # Test parent-child relationships
             father.children.extend([child1, child2])
             mother.children.extend([child1, child2])
-            db.session.commit()
+            db.session.flush()
 
             # Verify bidirectional relationships work
             assert len(father.children) == 2
@@ -132,7 +132,7 @@ class TestBusinessLogicConstraints:
                 confidence_score=0.85
             )
             db.session.add(person)
-            db.session.commit()
+            db.session.flush()
 
             # Verify our extraction tracking fields
             assert person.extraction_chunk_id == 42
@@ -148,7 +148,7 @@ class TestBusinessLogicConstraints:
             # Create first place
             place1 = Place(name="Amsterdam", country="Netherlands")
             db.session.add(place1)
-            db.session.commit()
+            db.session.flush()
 
             # Try to create duplicate place name
             place2 = Place(name="Amsterdam", country="Germany")
@@ -157,7 +157,7 @@ class TestBusinessLogicConstraints:
             # Should raise integrity error due to unique constraint
             from sqlalchemy.exc import IntegrityError
             with pytest.raises(IntegrityError):  # SQLAlchemy will raise an IntegrityError
-                db.session.commit()
+                db.session.flush()
 
     def test_text_corpus_chunk_relationship(self, app):
         """Test our text corpus and chunk relationship logic"""
@@ -172,7 +172,7 @@ class TestBusinessLogicConstraints:
                 chunk_overlap=200
             )
             db.session.add(corpus)
-            db.session.commit()
+            db.session.flush()
 
             # Add chunks
             chunk1 = SourceText(
@@ -192,7 +192,7 @@ class TestBusinessLogicConstraints:
                 token_count=7
             )
             db.session.add_all([chunk1, chunk2])
-            db.session.commit()
+            db.session.flush()
 
             # Test our chunk_count business logic
             assert corpus.chunk_count == 2
@@ -205,11 +205,9 @@ class TestBusinessLogicConstraints:
             ).all()
             assert len(page_1_chunks) == 2
 
-    def test_confidence_scoring_logic(self, app):
+    def test_confidence_scoring_logic(self, app, db):
         """Test our confidence scoring business logic"""
         with app.app_context():
-            db.create_all()
-
             # Create people with different confidence scores
             high_confidence = Person(
                 given_names="Johannes",
@@ -231,7 +229,7 @@ class TestBusinessLogicConstraints:
             )
 
             db.session.add_all([high_confidence, medium_confidence, low_confidence])
-            db.session.commit()
+            db.session.flush()  # Make data available for queries within this transaction
 
             # Test querying by confidence threshold (our business logic)
             high_quality_people = Person.query.filter(Person.confidence_score >= 0.80).all()
@@ -253,7 +251,7 @@ class TestRAGFunctionality:
 
             corpus = TextCorpus(name="Test Corpus", description="Test")
             db.session.add(corpus)
-            db.session.commit()
+            db.session.flush()
 
             # Create text chunk with mock embedding
             chunk = SourceText(
@@ -265,7 +263,7 @@ class TestRAGFunctionality:
                 # Note: In real usage, embedding would be a vector, but we can't easily test pgvector in SQLite
             )
             db.session.add(chunk)
-            db.session.commit()
+            db.session.flush()
 
             # Verify our RAG-specific fields are stored
             assert chunk.embedding_model == "test-model"

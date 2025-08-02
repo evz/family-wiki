@@ -114,6 +114,12 @@
                                 {% if corpus.embedding_model %}
                                     <small>Model: {{ corpus.embedding_model }}</small>
                                 {% endif %}
+                                {% if corpus.chunk_size %}
+                                    <small>Chunk Size: {{ corpus.chunk_size }}</small>
+                                {% endif %}
+                                {% if corpus.query_chunk_limit %}
+                                    <small>Query Limit: {{ corpus.query_chunk_limit }}</small>
+                                {% endif %}
                             </div>
                         </div>
                     {% endfor %}
@@ -158,7 +164,9 @@ document.addEventListener('DOMContentLoaded', function() {
             description: '{{ corpus.description|replace("'", "\\'") }}',
             status: '{{ corpus.processing_status }}',
             created: '{{ corpus.created_at.strftime("%Y-%m-%d %H:%M") }}',
-            embedding_model: '{{ corpus.embedding_model or "" }}'
+            embedding_model: '{{ corpus.embedding_model or "" }}',
+            chunk_size: {{ corpus.chunk_size or 1500 }},
+            query_chunk_limit: {{ corpus.query_chunk_limit or 20 }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
     };
@@ -201,6 +209,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="corpus-stats">
                 <p><strong>Created:</strong> ${corpus.created}</p>
                 ${corpus.embedding_model ? `<p><strong>Embedding Model:</strong> ${corpus.embedding_model}</p>` : ''}
+                <p><strong>Chunk Size:</strong> ${corpus.chunk_size} characters</p>
+                <p><strong>Query Chunk Limit:</strong> ${corpus.query_chunk_limit} chunks</p>
                 ${corpus.status === 'completed' ? `
                     <p><em>Ready for queries</em></p>
                 ` : corpus.status === 'processing' ? `

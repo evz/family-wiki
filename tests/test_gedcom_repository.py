@@ -91,8 +91,10 @@ class TestGedcomRepository:
 
     def test_create_person_full_data(self, repository, mock_db_session, sample_person_data):
         """Test creating person with full data"""
-        # Mock place creation
-        repository.get_or_create_place = Mock(return_value=str(uuid.uuid4()))
+        # Mock place creation - now returns Place objects
+        mock_place = Mock()
+        mock_place.id = str(uuid.uuid4())
+        repository.get_or_create_place = Mock(return_value=mock_place)
 
         person = repository.create_person(sample_person_data)
 
@@ -189,14 +191,15 @@ class TestGedcomRepository:
             'marriage_place': 'Amsterdam'
         }
 
-        place_id = str(uuid.uuid4())
-        repository.get_or_create_place = Mock(return_value=place_id)
+        mock_place = Mock()
+        mock_place.id = str(uuid.uuid4())
+        repository.get_or_create_place = Mock(return_value=mock_place)
 
         family = repository.create_family(family_data)
 
         assert family.family_identifier == 'F1'
         assert family.marriage_date == '1875-06-15'
-        assert family.marriage_place_id == place_id
+        assert family.marriage_place_id == mock_place.id
         repository.get_or_create_place.assert_called_once_with('Amsterdam')
         mock_db_session.add.assert_called_once_with(family)
 
@@ -293,7 +296,7 @@ class TestGedcomRepository:
 
         result = repository.get_or_create_place('Amsterdam')
 
-        assert result == place.id
+        assert result == place
         # Database should not be queried when place is in cache
         repository.db_session.query.assert_not_called()
 
@@ -309,7 +312,7 @@ class TestGedcomRepository:
 
         result = repository.get_or_create_place('Amsterdam')
 
-        assert result == place.id
+        assert result == place
         assert repository.place_cache['Amsterdam'] == place
         mock_db_session.query.assert_called_once_with(Place)
         mock_query.filter_by.assert_called_once_with(name='Amsterdam')
@@ -367,15 +370,6 @@ class TestGedcomRepository:
         # Should cache with trimmed name
         assert 'Amsterdam' in repository.place_cache
 
-    def test_commit(self, repository, mock_db_session):
-        """Test commit operation"""
-        repository.commit()
-        mock_db_session.commit.assert_called_once()
-
-    def test_rollback(self, repository, mock_db_session):
-        """Test rollback operation"""
-        repository.rollback()
-        mock_db_session.rollback.assert_called_once()
 
     def test_integration_create_person_with_real_places(self, db):
         """Integration test: create person with real database session"""
@@ -406,8 +400,7 @@ class TestGedcomRepository:
         # Verify cache is populated
         assert 'Amsterdam' in repository.place_cache
 
-        # Clean up
-        db.session.rollback()
+        # Clean up handled by test fixture
 
     def test_integration_family_workflow(self, db):
         """Integration test: complete family creation workflow"""
@@ -447,5 +440,4 @@ class TestGedcomRepository:
         assert family.mother == mother
         assert child in family.children
 
-        # Clean up
-        db.session.rollback()
+        # Clean up handled by test fixture

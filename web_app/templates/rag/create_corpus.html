@@ -66,6 +66,18 @@
         </div>
 
         <div class="form-group">
+            <label for="chunk_size">Chunk Size</label>
+            <input type="number" id="chunk_size" name="chunk_size" value="1500" min="500" max="4000" step="100">
+            <small class="form-help">Size of text chunks in characters (500-4000). Larger chunks provide more context but may reduce search precision.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="query_chunk_limit">Query Chunk Limit</label>
+            <input type="number" id="query_chunk_limit" name="query_chunk_limit" value="20" min="5" max="50" step="5">
+            <small class="form-help">Maximum number of chunks to retrieve for queries (5-50). More chunks provide broader context but may introduce noise.</small>
+        </div>
+
+        <div class="form-group">
             <label for="text_file">Text File *</label>
             <input type="file" id="text_file" name="text_file" accept=".txt" required>
             <small class="form-help">Upload a .txt file containing the text content for this corpus</small>

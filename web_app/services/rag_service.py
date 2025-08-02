@@ -9,8 +9,7 @@ from pathlib import Path
 import requests
 from flask import current_app
 
-from web_app.database import db
-from web_app.database.models import ExtractionPrompt, Query, SourceText, TextCorpus
+from web_app.repositories.rag_repository import RAGRepository
 from web_app.services.exceptions import (
     ExternalServiceError,
     NotFoundError,
@@ -29,6 +28,7 @@ class RAGService:
     def __init__(self):
         self.logger = get_project_logger(__name__)
         self.text_processor = TextProcessingService()
+        self.rag_repository = RAGRepository()
 
     def _get_ollama_config(self):
         """Get Ollama server configuration from Flask config"""
@@ -53,22 +53,12 @@ class RAGService:
         except requests.RequestException as e:
             raise ExternalServiceError(f"Failed to connect to Ollama server: {str(e)}") from e
 
-    def _get_prompt_by_id(self, prompt_id: str, expected_type: str = None) -> ExtractionPrompt:
+    def _get_prompt_by_id(self, prompt_id: str, expected_type: str = None):
         """Get a prompt by ID, optionally validate type"""
-        if isinstance(prompt_id, str):
-            try:
-                prompt_id = uuid.UUID(prompt_id)
-            except ValueError as e:
-                raise NotFoundError(f"Invalid prompt ID format: {prompt_id}") from e
-
-        prompt = db.session.get(ExtractionPrompt, prompt_id)
-        if not prompt:
-            raise NotFoundError(f"Prompt not found: {prompt_id}")
-
-        if expected_type and prompt.prompt_type != expected_type:
-            raise NotFoundError(f"Prompt {prompt_id} is type '{prompt.prompt_type}', expected '{expected_type}'")
-
-        return prompt
+        try:
+            return self.rag_repository.get_prompt_by_id(prompt_id, expected_type)
+        except ValueError as e:
+            raise NotFoundError(str(e)) from e
 
     def _generate_llm_response(self, prompt: str, model: str = None, temperature: float = 0.3) -> str:
         """Generate a response from Ollama LLM"""
@@ -89,31 +79,21 @@ class RAGService:
         return response.get('response', 'No response generated')
 
     @handle_service_exceptions(logger)
-    def create_corpus(self, name: str, description: str = "") -> TextCorpus:
+    def create_corpus(self, name: str, description: str = "", **kwargs):
         """Create a new text corpus"""
-        corpus = TextCorpus(
-            name=name,
-            description=description,
-            is_active=True
-        )
-        db.session.add(corpus)
-        db.session.commit()
+        corpus = self.rag_repository.create_corpus(name=name, description=description, **kwargs)
         self.logger.info(f"Created corpus: {name}")
         return corpus
 
     @handle_service_exceptions(logger)
-    def get_active_corpus(self) -> TextCorpus | None:
+    def get_active_corpus(self):
         """Get the currently active corpus"""
-        return db.session.execute(
-            db.select(TextCorpus).filter_by(is_active=True)
-        ).scalar_one_or_none()
+        return self.rag_repository.get_active_corpus()
 
     @handle_service_exceptions(logger)
-    def get_all_corpora(self) -> list[TextCorpus]:
+    def get_all_corpora(self):
         """Get all text corpora"""
-        return db.session.execute(
-            db.select(TextCorpus).order_by(TextCorpus.created_at.desc())
-        ).scalars().all()
+        return self.rag_repository.get_all_corpora()
 
     @handle_service_exceptions(logger)
     def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
@@ -141,75 +121,67 @@ class RAGService:
 
     @handle_service_exceptions(logger)
     def store_source_text(self, corpus_id: str, filename: str, content: str, page_number: int = None) -> int:
-        """Store source text with chunking and embeddings"""
-        # Convert string UUID to UUID object if needed
-        if isinstance(corpus_id, str):
-            corpus_id = uuid.UUID(corpus_id)
-
-        corpus = db.session.get(TextCorpus, corpus_id)
+        """Store source text with unified processing, chunking, and genealogical anchoring"""
+        # Get corpus using repository
+        corpus = self.rag_repository.get_corpus_by_id(corpus_id)
         if not corpus:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 
-        # Clean the text before processing
-        cleaned_content = self.text_processor.clean_text_for_rag(content)
+        # Generate content hash for deduplication (using raw content)
+        content_hash = hashlib.sha256(content.encode()).hexdigest()
 
-        # Generate content hash for deduplication (using cleaned content)
-        content_hash = hashlib.sha256(cleaned_content.encode()).hexdigest()
-
-        # Check if this content already exists
-        existing = db.session.execute(
-            db.select(SourceText).filter_by(
-                corpus_id=corpus_id,
-                content_hash=content_hash
-            )
-        ).scalar_one_or_none()
-
+        # Check if this content already exists using repository
+        existing = self.rag_repository.get_source_text_by_hash(corpus_id, content_hash)
         if existing:
             self.logger.info(f"Content already exists for {filename}:{page_number}")
             return 0
 
-        # Chunk the cleaned text with 15% overlap (more generous than the previous 20% fixed overlap)
-        overlap_percentage = 0.15  # 15% overlap for better context preservation
-        chunks = self.text_processor.smart_chunk_text(
-            text=cleaned_content,
+        # Use unified processor with genealogical anchoring
+        enriched_chunks = self.text_processor.process_corpus_with_anchors(
+            raw_text=content,
             chunk_size=corpus.chunk_size,
-            overlap_percentage=overlap_percentage
+            overlap_percentage=0.15,  # 15% overlap for better context preservation
+            spellfix=False  # Disable spell correction for genealogy names
         )
+
         stored_count = 0
 
-        for i, chunk in enumerate(chunks):
-            if not chunk.strip():
+        for enriched_chunk in enriched_chunks:
+            chunk_content = enriched_chunk['content']
+            if not chunk_content.strip():
                 continue
 
             # Generate embedding using corpus's embedding model
-            embedding = self.generate_embedding(chunk, corpus.embedding_model)
+            embedding = self.generate_embedding(chunk_content, corpus.embedding_model)
             if not embedding:
-                self.logger.warning(f"Failed to generate embedding for chunk {i} of {filename}")
+                self.logger.warning(f"Failed to generate embedding for chunk {enriched_chunk['chunk_number']} of {filename}")
                 continue
 
-            # Generate Daitch-Mokotoff codes for genealogy name matching
-            dm_codes = self.text_processor.generate_daitch_mokotoff_codes(chunk)
+            # Extract genealogical context
+            gen_context = enriched_chunk['genealogical_context']
 
-            # Create source text record
-            source_text = SourceText(
-                corpus_id=corpus_id,
-                filename=filename,
-                page_number=page_number,
-                chunk_number=i,
-                content=chunk,
-                content_hash=content_hash,
-                embedding=embedding,
-                embedding_model=corpus.embedding_model,  # Use corpus's embedding model
-                token_count=len(chunk.split()),
-                dm_codes=dm_codes  # Store DM codes array
-                # Note: content_tsvector will be populated by PostgreSQL trigger or function
-            )
-
-            db.session.add(source_text)
+            # Create source text record using repository
+            source_text_data = {
+                'filename': filename,
+                'page_number': page_number,
+                'chunk_number': enriched_chunk['chunk_number'],
+                'content': chunk_content,
+                'content_hash': enriched_chunk['content_hash'],
+                'embedding': embedding,
+                'embedding_model': corpus.embedding_model,
+                'token_count': len(chunk_content.split()),
+                'dm_codes': gen_context['dm_codes'],
+                'generation_number': gen_context['generation_number'],
+                'generation_text': gen_context['generation_text'],
+                'family_context': gen_context['family_context'],
+                'birth_years': [by['year'] for by in gen_context['birth_years']],
+                'chunk_type': gen_context['chunk_type']
+            }
+            
+            self.rag_repository.create_source_text(corpus_id, **source_text_data)
             stored_count += 1
 
-        db.session.commit()
-        self.logger.info(f"Stored {stored_count} chunks for {filename}:{page_number}")
+        self.logger.info(f"Stored {stored_count} enriched chunks for {filename}:{page_number}")
         return stored_count
 
     @handle_service_exceptions(logger)
@@ -256,7 +228,7 @@ class RAGService:
 
 
     @handle_service_exceptions(logger)
-    def semantic_search(self, query_text: str, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple[SourceText, float]]:
+    def semantic_search(self, query_text: str, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple]:
         """Perform semantic search on source text"""
         # Use active corpus if none specified, get corpus to determine embedding model
         if not corpus_id:
@@ -266,11 +238,10 @@ class RAGService:
             corpus_id = corpus.id
         else:
             # Get corpus to determine embedding model
-            if isinstance(corpus_id, str):
-                corpus_id = uuid.UUID(corpus_id)
-            corpus = db.session.get(TextCorpus, corpus_id)
+            corpus = self.rag_repository.get_corpus_by_id(corpus_id)
             if not corpus:
                 raise NotFoundError(f"Corpus not found: {corpus_id}")
+            corpus_id = corpus.id
 
         # Clean query text for consistent processing (no spell correction for speed)
         cleaned_query_text = self.text_processor.clean_text_for_rag(query_text, spellfix=False)
@@ -280,12 +251,8 @@ class RAGService:
         if not query_embedding:
             raise ExternalServiceError("Failed to generate query embedding")
 
-        # Ensure corpus_id is UUID object
-        if isinstance(corpus_id, str):
-            corpus_id = uuid.UUID(corpus_id)
-
-        # Search for similar chunks
-        results = SourceText.find_similar(
+        # Search for similar chunks using repository
+        results = self.rag_repository.find_similar(
             query_embedding=query_embedding,
             corpus_id=corpus_id,
             limit=limit,
@@ -295,8 +262,8 @@ class RAGService:
         return results
 
     @handle_service_exceptions(logger)
-    def hybrid_search(self, query_text: str, corpus_id: str = None, limit: int = 12,
-                     vec_limit: int = 25, trgm_limit: int = 20, phon_limit: int = 40) -> list[tuple[SourceText, float]]:
+    def hybrid_search(self, query_text: str, corpus_id: str = None, limit: int = None,
+                     vec_limit: int = 25, trgm_limit: int = 20, phon_limit: int = 40) -> list[tuple]:
         """
         Perform hybrid search using Reciprocal Rank Fusion (RRF) combining:
         1. Vector similarity (semantic search)
@@ -307,7 +274,7 @@ class RAGService:
         Args:
             query_text: The search query
             corpus_id: ID of corpus to search (uses active if None)
-            limit: Final number of results to return
+            limit: Final number of results to return (uses corpus.query_chunk_limit if None)
             vec_limit: Number of results from vector search
             trgm_limit: Number of results from trigram search
             phon_limit: Number of results from phonetic search
@@ -325,11 +292,14 @@ class RAGService:
             corpus_id = corpus.id
         else:
             # Get corpus to determine embedding model
-            if isinstance(corpus_id, str):
-                corpus_id = uuid.UUID(corpus_id)
-            corpus = db.session.get(TextCorpus, corpus_id)
+            corpus = self.rag_repository.get_corpus_by_id(corpus_id)
             if not corpus:
                 raise NotFoundError(f"Corpus not found: {corpus_id}")
+            corpus_id = corpus.id
+
+        # Use corpus's query_chunk_limit if no limit specified
+        if limit is None:
+            limit = corpus.query_chunk_limit
 
         # Clean query text using same processing as corpus (but without spell correction for speed)
         cleaned_query = self.text_processor.clean_text_for_rag(query_text, spellfix=False)
@@ -342,130 +312,24 @@ class RAGService:
         # Generate DM codes for phonetic search (use cleaned query)
         query_dm_codes = self.text_processor.generate_daitch_mokotoff_codes(cleaned_query)
 
-        # Convert embedding to vector string for PostgreSQL
-        if hasattr(query_embedding, 'tolist'):
-            query_embedding_list = query_embedding.tolist()
-        elif isinstance(query_embedding, list):
-            query_embedding_list = query_embedding
-        else:
-            query_embedding_list = list(query_embedding)
-        vector_str = '[' + ','.join(map(str, query_embedding_list)) + ']'
 
-        # Convert DM codes array to PostgreSQL array literal
-        if query_dm_codes:
-            dm_codes_str = "ARRAY[" + ",".join(f"'{code}'" for code in query_dm_codes) + "]"
-        else:
-            dm_codes_str = "ARRAY[]::varchar[]"
-
-        # Execute hybrid search query using RRF
-        hybrid_query = text(f"""
-            WITH
-            params AS (
-              SELECT
-                '{vector_str}'::vector AS q_vec,
-                plainto_tsquery('dutch', :query_text) AS q_ts,
-                {dm_codes_str} AS q_dm
-            ),
-            
-            vec AS (
-              SELECT id,
-                     row_number() OVER () AS vec_rank
-              FROM   source_texts, params
-              WHERE  corpus_id = :corpus_id
-                AND  embedding IS NOT NULL
-              ORDER  BY embedding <=> q_vec
-              LIMIT  :vec_limit
-            ),
-            
-            trgm AS (
-              SELECT id,
-                     row_number() OVER (ORDER BY similarity(content, :query_text) DESC) AS tg_rank
-              FROM   source_texts
-              WHERE  corpus_id = :corpus_id
-                AND  content % :query_text
-              LIMIT  :trgm_limit
-            ),
-            
-            fts AS (
-              SELECT id,
-                     row_number() OVER (ORDER BY ts_rank(content_tsvector, q_ts) DESC) AS fts_rank
-              FROM   source_texts, params
-              WHERE  corpus_id = :corpus_id
-                AND  content_tsvector @@ q_ts
-              LIMIT  :trgm_limit
-            ),
-            
-            phon AS (
-              SELECT id,
-                     row_number() OVER () AS ph_rank
-              FROM   source_texts, params
-              WHERE  corpus_id = :corpus_id
-                AND  dm_codes && q_dm::varchar[]
-                AND  array_length(q_dm, 1) > 0
-              LIMIT  :phon_limit
-            ),
-            
-            rrf AS (
-              SELECT id, 1.0/(60+vec_rank) AS score FROM vec
-              UNION ALL
-              SELECT id, 1.0/(60+tg_rank) AS score FROM trgm
-              UNION ALL
-              SELECT id, 1.0/(60+fts_rank) AS score FROM fts
-              UNION ALL
-              SELECT id, 1.0/(80+ph_rank) AS score FROM phon
-            )
-            
-            SELECT st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number, 
-                   st.content, st.content_hash, st.embedding, st.embedding_model, 
-                   st.token_count, st.created_at, st.updated_at, st.content_tsvector,
-                   st.dm_codes, SUM(rrf.score) as combined_score
-            FROM   rrf 
-            JOIN   source_texts st ON rrf.id = st.id
-            GROUP  BY st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number,
-                      st.content, st.content_hash, st.embedding, st.embedding_model,
-                      st.token_count, st.created_at, st.updated_at, st.content_tsvector,
-                      st.dm_codes
-            ORDER  BY SUM(rrf.score) DESC
-            LIMIT  :limit
-        """)
-
-        # Execute the query (use cleaned query for all text-based searches)
-        result = db.session.execute(hybrid_query, {
-            'query_text': cleaned_query,
-            'corpus_id': corpus_id,
-            'vec_limit': vec_limit,
-            'trgm_limit': trgm_limit,
-            'phon_limit': phon_limit,
-            'limit': limit
-        })
-
-        # Convert results to SourceText objects with scores
-        results = []
-        for row in result:
-            # Create SourceText object from row data
-            source_text = SourceText(
-                id=row.id,
-                corpus_id=row.corpus_id,
-                filename=row.filename,
-                page_number=row.page_number,
-                chunk_number=row.chunk_number,
-                content=row.content,
-                content_hash=row.content_hash,
-                embedding=row.embedding,
-                embedding_model=row.embedding_model,
-                token_count=row.token_count,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                content_tsvector=row.content_tsvector,
-                dm_codes=row.dm_codes
-            )
-            results.append((source_text, float(row.combined_score)))
+        # Execute hybrid search using repository
+        results = self.rag_repository.hybrid_search(
+            query_text=cleaned_query,
+            corpus_id=corpus_id,
+            query_embedding=query_embedding,
+            query_dm_codes=query_dm_codes,
+            vec_limit=vec_limit,
+            trgm_limit=trgm_limit,
+            phon_limit=phon_limit,
+            limit=limit
+        )
 
         self.logger.info(f"Hybrid search returned {len(results)} results for query: {query_text[:50]}...")
         return results
 
     @handle_service_exceptions(logger)
-    def conversation_aware_search(self, question: str, conversation_id: str = None, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple[SourceText, float]]:
+    def conversation_aware_search(self, question: str, conversation_id: str = None, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple]:
         """
         Perform semantic search with conversation context awareness
         
@@ -516,7 +380,7 @@ class RAGService:
 
         # Clean the search query for consistent processing
         cleaned_search_query = self.text_processor.clean_text_for_rag(search_query, spellfix=False)
-        
+
         # Perform hybrid search with the enhanced and cleaned query
         return self.hybrid_search(
             query_text=cleaned_search_query,
@@ -525,7 +389,7 @@ class RAGService:
         )
 
     @handle_service_exceptions(logger)
-    def ask_question(self, question: str, prompt_id: str, corpus_id: str = None, max_chunks: int = 5, similarity_threshold: float = 0.55, conversation_id: str = None) -> dict:
+    def ask_question(self, question: str, prompt_id: str, corpus_id: str = None, max_chunks: int = None, similarity_threshold: float = 0.55, conversation_id: str = None) -> dict:
         """
         Enhanced RAG query with optional conversation awareness
 
@@ -533,7 +397,7 @@ class RAGService:
             question: The question to ask
             prompt_id: RAG prompt to use (required)
             corpus_id: ID of corpus to search (uses active if None)
-            max_chunks: Maximum number of chunks to retrieve
+            max_chunks: Maximum number of chunks to retrieve (uses corpus.query_chunk_limit if None)
             similarity_threshold: Minimum similarity threshold for search results
             conversation_id: UUID of conversation for context-aware search (optional)
 
@@ -548,11 +412,14 @@ class RAGService:
             corpus_id = corpus.id
         else:
             # Validate corpus exists
-            if isinstance(corpus_id, str):
-                corpus_id = uuid.UUID(corpus_id)
-            corpus = db.session.get(TextCorpus, corpus_id)
+            corpus = self.rag_repository.get_corpus_by_id(corpus_id)
             if not corpus:
                 raise NotFoundError(f"Corpus not found: {corpus_id}")
+            corpus_id = corpus.id
+
+        # Use corpus's query_chunk_limit if no max_chunks specified
+        if max_chunks is None:
+            max_chunks = corpus.query_chunk_limit
 
         # Perform semantic search - use conversation-aware search if conversation_id provided
         if conversation_id:
@@ -582,22 +449,42 @@ class RAGService:
         # Get RAG prompt from database
         rag_prompt = self._get_prompt_by_id(prompt_id, 'rag')
 
-        # Prepare context from search results
+        # Prepare context from search results with genealogical metadata
         context_chunks = []
         chunk_ids = []
         similarity_scores = []
+        genealogical_summary = self._build_genealogical_summary(search_results)
 
         for chunk, similarity in search_results:
-            context_chunks.append(f"Source: {chunk.filename}:{chunk.page_number}\\n{chunk.content}")
+            # Build context string with genealogical information
+            context_parts = [f"Source: {chunk.filename}:{chunk.page_number}"]
+
+            # Add genealogical context if available
+            if chunk.generation_number:
+                context_parts.append(f"Generation {chunk.generation_number}")
+            if chunk.birth_years:
+                context_parts.append(f"Birth years: {', '.join(map(str, chunk.birth_years))}")
+            if chunk.chunk_type and chunk.chunk_type != 'general':
+                context_parts.append(f"Type: {chunk.chunk_type}")
+
+            context_header = " | ".join(context_parts)
+            context_chunks.append(f"{context_header}\\n{chunk.content}")
             chunk_ids.append(str(chunk.id))
             similarity_scores.append(similarity)
 
         context = "\\n\\n---\\n\\n".join(context_chunks)
 
+        # Enhanced prompt with genealogical awareness
+        enhanced_context = f"""GENEALOGICAL CONTEXT:
+{genealogical_summary}
+
+SOURCE MATERIALS:
+{context}"""
+
         # Format the prompt using template variables
         formatted_prompt = rag_prompt.prompt_text.format(
             question=question,
-            context=context
+            context=enhanced_context
         )
 
         # Generate response using Ollama
@@ -616,25 +503,16 @@ class RAGService:
     @handle_service_exceptions(logger)
     def get_corpus_stats(self, corpus_id: str) -> dict:
         """Get statistics for a corpus"""
-        # Convert string UUID to UUID object if needed
-        if isinstance(corpus_id, str):
-            corpus_id = uuid.UUID(corpus_id)
-
-        corpus = db.session.get(TextCorpus, corpus_id)
+        corpus = self.rag_repository.get_corpus_by_id(corpus_id)
         if not corpus:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 
-        chunk_count = db.session.execute(
-            db.select(db.func.count(SourceText.id)).filter_by(corpus_id=corpus_id)
-        ).scalar()
-        unique_files = db.session.execute(
-            db.select(db.func.count(db.distinct(SourceText.filename))).filter_by(corpus_id=corpus_id)
-        ).scalar()
-
+        stats = self.rag_repository.get_corpus_stats(corpus_id)
+        
         return {
             'corpus_name': corpus.name,
-            'chunk_count': chunk_count,
-            'unique_files': unique_files,
+            'chunk_count': stats['chunk_count'],
+            'unique_files': stats['unique_files'],
             'embedding_model': corpus.embedding_model
         }
 
@@ -649,64 +527,77 @@ class RAGService:
         Returns:
             Dict with deletion results and statistics
         """
-        # Convert string UUID to UUID object if needed
-        if isinstance(corpus_id, str):
-            corpus_id = uuid.UUID(corpus_id)
-
-        corpus = db.session.get(TextCorpus, corpus_id)
-        if not corpus:
-            raise NotFoundError(f"Corpus not found: {corpus_id}")
-
-        # Get statistics before deletion
-        chunk_count = db.session.execute(
-            db.select(db.func.count(SourceText.id)).filter_by(corpus_id=corpus_id)
-        ).scalar()
-
-        corpus_name = corpus.name
-
-        self.logger.info(f"Deleting corpus '{corpus_name}' with {chunk_count} chunks")
-
-        # Delete related records first to avoid foreign key violations
-        # Delete Query records that reference this corpus
-        from web_app.database.models import Query
-        query_count = db.session.execute(
-            db.select(db.func.count(Query.id)).filter_by(corpus_id=corpus_id)
-        ).scalar()
-
-        if query_count > 0:
-            self.logger.info(f"Deleting {query_count} associated queries")
-            db.session.execute(
-                db.delete(Query).where(Query.corpus_id == corpus_id)
-            )
-
-        # Delete SourceText records (should be handled by cascade, but being explicit)
-        if chunk_count > 0:
-            self.logger.info(f"Deleting {chunk_count} associated text chunks")
-            db.session.execute(
-                db.delete(SourceText).where(SourceText.corpus_id == corpus_id)
-            )
-
-        # Now delete the corpus
-        db.session.delete(corpus)
-        db.session.commit()
-
-        self.logger.info(f"Successfully deleted corpus '{corpus_name}'")
+        try:
+            deletion_result = self.rag_repository.delete_corpus(corpus_id)
+        except ValueError as e:
+            # Check if it's a UUID validation error vs corpus not found error
+            if "Corpus not found" in str(e):
+                raise NotFoundError(str(e)) from e
+            else:
+                # Re-raise as is for UUID validation errors - the exception handler will convert it
+                raise
+        
+        self.logger.info(f"Successfully deleted corpus '{deletion_result['corpus_name']}'")
 
         # Build comprehensive deletion message
-        deleted_items = [f"corpus '{corpus_name}'"]
-        if chunk_count > 0:
-            deleted_items.append(f"{chunk_count} text chunks")
-        if query_count > 0:
-            deleted_items.append(f"{query_count} queries")
+        deleted_items = [f"corpus '{deletion_result['corpus_name']}'"]
+        if deletion_result['deleted_chunks'] > 0:
+            deleted_items.append(f"{deletion_result['deleted_chunks']} text chunks")
+        if deletion_result['deleted_queries'] > 0:
+            deleted_items.append(f"{deletion_result['deleted_queries']} queries")
 
         message = f"Successfully deleted {', '.join(deleted_items)}"
 
         return {
             'success': True,
-            'corpus_name': corpus_name,
-            'deleted_chunks': chunk_count,
-            'deleted_queries': query_count,
+            'corpus_name': deletion_result['corpus_name'],
+            'deleted_chunks': deletion_result['deleted_chunks'],
+            'deleted_queries': deletion_result['deleted_queries'],
             'message': message
         }
+
+    def _build_genealogical_summary(self, search_results: list) -> str:
+        """Build genealogical context summary from search results"""
+        if not search_results:
+            return "No genealogical context available."
+
+        generations = set()
+        chunk_types = set()
+        birth_years = []
+
+        for chunk, _similarity in search_results:
+            if chunk.generation_number:
+                generations.add(chunk.generation_number)
+            if chunk.chunk_type and chunk.chunk_type != 'general':
+                chunk_types.add(chunk.chunk_type)
+            if chunk.birth_years:
+                birth_years.extend(chunk.birth_years)
+
+        summary_parts = []
+
+        if generations:
+            gen_list = sorted(generations)
+            if len(gen_list) == 1:
+                summary_parts.append(f"Focus: Generation {gen_list[0]}")
+            else:
+                summary_parts.append(f"Generations covered: {', '.join(map(str, gen_list))}")
+
+        if chunk_types:
+            summary_parts.append(f"Content types: {', '.join(chunk_types)}")
+
+        if birth_years:
+            year_range = f"{min(birth_years)}-{max(birth_years)}" if len(set(birth_years)) > 1 else str(birth_years[0])
+            summary_parts.append(f"Time period: {year_range}")
+
+        if len(set(chunk.filename for chunk, _ in search_results)) > 1:
+            summary_parts.append("Multiple source documents referenced")
+
+        summary = ". ".join(summary_parts) if summary_parts else "General genealogical content"
+
+        # Add disambiguation note if multiple generations/families present
+        if len(generations) > 1 or len(chunk_types) > 1:
+            summary += ". Note: When answering, distinguish between people/families by generation number, birth year, or family context to avoid confusion."
+
+        return summary
 
 

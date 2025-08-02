@@ -1,15 +1,17 @@
 """
-RAG processing tasks for corpus creation and text embedding
+RAG processing tasks for corpus creation and text embedding with parallel chunk processing
 """
+import hashlib
 import time
+import uuid
 
 import requests
-from celery import current_task
+from celery import chord, current_task
 from flask import current_app
 
-from web_app.database import db
-from web_app.database.models import TextCorpus
+from web_app.repositories.rag_repository import RAGRepository
 from web_app.services.rag_service import RAGService
+from web_app.services.text_processing_service import TextProcessingService
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.celery_app import celery
 
@@ -24,10 +26,11 @@ class CorpusProcessingManager:
         self.corpus_id = corpus_id
         self.corpus = None
         self.rag_service = RAGService()
+        self.rag_repository = RAGRepository()
 
     def _load_corpus(self):
         """Load and validate corpus from database"""
-        self.corpus = db.session.get(TextCorpus, self.corpus_id)
+        self.corpus = self.rag_repository.get_corpus_by_id(self.corpus_id)
         if not self.corpus:
             raise ValueError(f"Corpus not found: {self.corpus_id}")
 
@@ -38,9 +41,10 @@ class CorpusProcessingManager:
 
     def _update_corpus_status(self, status: str, error: str = None):
         """Update corpus processing status in database"""
+        self.rag_repository.update_corpus_status(self.corpus_id, status, error)
+        # Update local corpus object too
         self.corpus.processing_status = status
         self.corpus.processing_error = error
-        db.session.commit()
         logger.info(f"Updated corpus {self.corpus_id} status to: {status}")
 
     def _get_ollama_connection(self):
@@ -176,17 +180,10 @@ class CorpusProcessingManager:
 
         # Try to update corpus status in database
         try:
+            self.rag_repository.update_corpus_status(self.corpus_id, 'failed', error_msg)
             if self.corpus:
                 self.corpus.processing_status = 'failed'
                 self.corpus.processing_error = error_msg
-                db.session.commit()
-            else:
-                # If corpus wasn't loaded, try to load it just to update status
-                corpus = db.session.get(TextCorpus, self.corpus_id)
-                if corpus:
-                    corpus.processing_status = 'failed'
-                    corpus.processing_error = error_msg
-                    db.session.commit()
         except Exception as db_error:
             logger.warning(f"Could not update corpus status in database: {db_error}")
 
@@ -276,4 +273,287 @@ def process_corpus(self, corpus_id: str):
 
     except Exception as e:
         task_manager.handle_processing_error(e, "Unexpected error")
+        raise
+
+
+@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 2, 'countdown': 30})
+def process_chunk(self, corpus_id: str, chunk_text: str, chunk_number: int, filename: str,
+                 page_number: int = None, content_hash: str = None):
+    """
+    Process a single text chunk in parallel
+    
+    Args:
+        corpus_id: UUID of the corpus
+        chunk_text: The text content to process
+        chunk_number: Index of this chunk
+        filename: Source filename
+        page_number: Page number (optional)
+        content_hash: Content hash for deduplication
+        
+    Returns:
+        dict: Processing results for this chunk
+    """
+    try:
+        # Convert string UUID to UUID object
+        if isinstance(corpus_id, str):
+            corpus_id = uuid.UUID(corpus_id)
+
+        # Get corpus for embedding model info
+        rag_repository = RAGRepository()
+        corpus = rag_repository.get_corpus_by_id(corpus_id)
+        if not corpus:
+            raise ValueError(f"Corpus not found: {corpus_id}")
+
+        # Skip empty chunks
+        if not chunk_text.strip():
+            logger.warning(f"Empty chunk {chunk_number} skipped for corpus {corpus_id}")
+            return {'success': False, 'chunk_number': chunk_number, 'reason': 'empty_chunk'}
+
+        # Initialize services
+        rag_service = RAGService()
+        text_processor = TextProcessingService()
+
+        logger.info(f"Processing chunk {chunk_number} for corpus {corpus.name}")
+
+        # Generate embedding using corpus's embedding model
+        embedding = rag_service.generate_embedding(chunk_text, corpus.embedding_model)
+        if not embedding:
+            logger.error(f"Failed to generate embedding for chunk {chunk_number}")
+            return {'success': False, 'chunk_number': chunk_number, 'reason': 'embedding_failed'}
+
+        # Generate Daitch-Mokotoff codes for genealogy name matching
+        dm_codes = text_processor.generate_daitch_mokotoff_codes(chunk_text)
+
+        # Create source text record using repository
+        source_text = rag_repository.create_source_text(
+            corpus_id=corpus_id,
+            filename=filename,
+            page_number=page_number,
+            chunk_number=chunk_number,
+            content=chunk_text,
+            content_hash=content_hash,
+            embedding=embedding,
+            embedding_model=corpus.embedding_model,
+            token_count=len(chunk_text.split()),
+            dm_codes=dm_codes
+        )
+
+        logger.info(f"Successfully processed chunk {chunk_number} ({len(dm_codes)} DM codes)")
+
+        return {
+            'success': True,
+            'chunk_number': chunk_number,
+            'chunk_id': str(source_text.id),
+            'dm_codes_count': len(dm_codes),
+            'token_count': len(chunk_text.split()),
+            'chunk_size': len(chunk_text)
+        }
+
+    except Exception as e:
+        logger.error(f"Error processing chunk {chunk_number}: {str(e)}")
+        return {
+            'success': False,
+            'chunk_number': chunk_number,
+            'error': str(e)
+        }
+
+
+@celery.task(bind=True)
+def finalize_corpus(self, chunk_results: list, corpus_id: str):
+    """
+    Finalize corpus processing after all chunks are complete
+    
+    Args:
+        chunk_results: List of results from all chunk processing tasks
+        corpus_id: UUID of the corpus to finalize
+        
+    Returns:
+        dict: Final processing summary
+    """
+    try:
+        if isinstance(corpus_id, str):
+            corpus_id = uuid.UUID(corpus_id)
+
+        rag_repository = RAGRepository()
+        corpus = rag_repository.get_corpus_by_id(corpus_id)
+        if not corpus:
+            raise ValueError(f"Corpus not found: {corpus_id}")
+
+        # Analyze chunk results
+        successful_chunks = [r for r in chunk_results if r.get('success', False)]
+        failed_chunks = [r for r in chunk_results if not r.get('success', False)]
+
+        total_chunks = len(chunk_results)
+        success_count = len(successful_chunks)
+
+        logger.info(f"Finalizing corpus {corpus.name}: {success_count}/{total_chunks} chunks successful")
+
+        if success_count == 0:
+            # All chunks failed
+            status = 'failed'
+            error = f"All {total_chunks} chunks failed to process"
+        elif failed_chunks:
+            # Some chunks failed
+            status = 'completed_with_errors'
+            error = f"{len(failed_chunks)} of {total_chunks} chunks failed"
+        else:
+            # All chunks succeeded
+            status = 'completed'
+            error = None
+
+        rag_repository.update_corpus_status(corpus_id, status, error)
+
+        # Calculate summary statistics
+        total_dm_codes = sum(r.get('dm_codes_count', 0) for r in successful_chunks)
+        total_tokens = sum(r.get('token_count', 0) for r in successful_chunks)
+
+        result = {
+            'success': success_count > 0,
+            'corpus_id': str(corpus_id),
+            'corpus_name': corpus.name,
+            'total_chunks': total_chunks,
+            'successful_chunks': success_count,
+            'failed_chunks': len(failed_chunks),
+            'total_dm_codes': total_dm_codes,
+            'total_tokens': total_tokens,
+            'status': status
+        }
+
+        if failed_chunks:
+            result['failed_chunk_numbers'] = [r.get('chunk_number', 'unknown') for r in failed_chunks]
+
+        logger.info(f"Corpus {corpus.name} finalized: {result}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error finalizing corpus {corpus_id}: {str(e)}")
+        # Try to mark corpus as failed
+        try:
+            rag_repository = RAGRepository()
+            rag_repository.update_corpus_status(corpus_id, 'failed', f"Finalization error: {str(e)}")
+        except Exception:
+            pass
+        raise
+
+
+@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+def process_corpus_parallel(self, corpus_id: str):
+    """
+    Process corpus text content with parallel chunk processing
+    
+    Args:
+        corpus_id: UUID of the corpus to process
+        
+    Returns:
+        dict: Processing results with success status and statistics
+    """
+    try:
+        # Initialize manager but don't run the full sequential processing
+        task_manager = CorpusProcessingManager(corpus_id)
+
+        # Load corpus and validate
+        current_task.update_state(
+            state='PROGRESS',
+            meta={'status': 'Loading corpus from database...', 'progress': 10}
+        )
+        task_manager._load_corpus()
+
+        # Set status to processing
+        current_task.update_state(
+            state='PROGRESS',
+            meta={'status': 'Starting parallel text processing...', 'progress': 20}
+        )
+        task_manager._update_corpus_status('processing')
+
+        # Ensure embedding model is available
+        task_manager._ensure_embedding_model_available()
+
+        # Prepare text chunks for parallel processing
+        current_task.update_state(
+            state='PROGRESS',
+            meta={'status': 'Preparing text chunks for parallel processing...', 'progress': 40}
+        )
+
+        # Use corpus name as filename for source text
+        filename = f"{task_manager.corpus.name}.txt"
+
+        # Clean the text before processing (disable spell correction for genealogy names)
+        cleaned_content = task_manager.rag_service.text_processor.clean_text_for_rag(
+            task_manager.corpus.raw_content, spellfix=False
+        )
+
+        # Generate content hash for deduplication
+        content_hash = hashlib.sha256(cleaned_content.encode()).hexdigest()
+
+        # Create chunks using the text processor
+        overlap_percentage = 0.15  # 15% overlap for better context preservation
+        chunks = task_manager.rag_service.text_processor.smart_chunk_text(
+            text=cleaned_content,
+            chunk_size=task_manager.corpus.chunk_size,
+            overlap_percentage=overlap_percentage
+        )
+
+        logger.info(f"Created {len(chunks)} chunks for parallel processing of corpus {task_manager.corpus.name}")
+
+        if not chunks:
+            raise ValueError("No text chunks created from corpus content")
+
+        # Create individual chunk processing tasks
+        current_task.update_state(
+            state='PROGRESS',
+            meta={'status': f'Creating {len(chunks)} parallel chunk processing tasks...', 'progress': 50}
+        )
+
+        # Create the group of chunk processing tasks
+        chunk_tasks = []
+        for i, chunk in enumerate(chunks):
+            if chunk.strip():  # Only process non-empty chunks
+                chunk_task = process_chunk.s(
+                    corpus_id=corpus_id,
+                    chunk_text=chunk,
+                    chunk_number=i,
+                    filename=filename,
+                    page_number=None,  # Single corpus, no specific page
+                    content_hash=content_hash
+                )
+                chunk_tasks.append(chunk_task)
+
+        if not chunk_tasks:
+            raise ValueError("No valid chunks to process")
+
+        logger.info(f"Starting {len(chunk_tasks)} parallel chunk processing tasks for corpus {task_manager.corpus.name}")
+
+        # Use Celery chord: run all chunk tasks in parallel, then finalize when complete
+        current_task.update_state(
+            state='PROGRESS',
+            meta={'status': f'Starting parallel processing of {len(chunk_tasks)} chunks...', 'progress': 60}
+        )
+
+        # Create the chord: group of parallel tasks followed by callback
+        job = chord(chunk_tasks)(finalize_corpus.s(corpus_id))
+
+        # Return the job info - the actual processing continues asynchronously
+        return {
+            'success': True,
+            'corpus_id': corpus_id,
+            'corpus_name': task_manager.corpus.name,
+            'total_chunks': len(chunk_tasks),
+            'processing_mode': 'parallel',
+            'chord_job_id': job.id,
+            'message': f'Started parallel processing of "{task_manager.corpus.name}" with {len(chunk_tasks)} chunks'
+        }
+
+    except ValueError as e:
+        if 'task_manager' in locals():
+            task_manager.handle_processing_error(e, "Invalid corpus data")
+        raise
+
+    except ConnectionError as e:
+        if 'task_manager' in locals():
+            task_manager.handle_processing_error(e, "Connection error")
+        raise
+
+    except Exception as e:
+        if 'task_manager' in locals():
+            task_manager.handle_processing_error(e, "Unexpected error in parallel processing")
         raise

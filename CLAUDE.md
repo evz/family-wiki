@@ -449,3 +449,129 @@ pip install pytest-flask==1.3.0
 - ✅ `tests/test_blueprint_integration.py` - **NEW** - Comprehensive functional tests
 
 **Current Status:** The application now has a professional, modular blueprint architecture ready for continued development. All major reorganization and error handling standardization work is complete.
+
+## Architectural Improvements Needed (Discovered During Testing Review - August 2025)
+
+### 🔴 Critical Issues
+
+#### 1. **Transaction Management Violations**
+**Files with `db.session.commit()` breaking patterns:**
+- ✅ ~~`web_app/pdf_processing/ocr_processor.py`~~ - **FIXED** - Now uses repository pattern
+- `web_app/services/rag_service.py` - Service layer should not commit
+- `web_app/services/prompt_service.py` - Service layer should not commit  
+- `web_app/blueprints/rag.py` - Blueprint should not commit
+- `web_app/tasks/rag_tasks.py` - Tasks should manage transactions differently
+
+**Impact:** Test hanging, transaction deadlocks, poor error recovery
+**Solution:** Move commits to repositories, use flush() in services
+
+#### 2. **Missing OCR Repository** ✅ **COMPLETED**
+**Problem:** `PDFOCRProcessor` directly manages database operations
+**Impact:** Breaks repository pattern, causes test hanging, poor separation of concerns
+**Solution:** ✅ **IMPLEMENTED** - Created `OcrRepository` with base classes, refactored processor, fixed hanging tests
+
+#### 3. **Duplicated Research Question Logic**
+**Files with overlapping functionality:**
+- `web_app/research_question_generator.py` - Standalone class
+- `web_app/tasks/research_tasks.py` - Task wrapper
+- **Missing:** ResearchService following app patterns
+
+**Issues:**
+- No service layer for research questions
+- Direct task -> generator coupling
+- Method name mismatch: `generate_questions()` vs `generate_all_questions()`
+
+### 🟡 Architectural Inconsistencies
+
+#### 4. **Service Layer Inconsistencies**
+**Existing Services:**
+- ✅ `RAGService` - Uses repositories (but commits directly)
+- ✅ `PromptService` - Uses database directly (commits)
+- ✅ `GedcomService` - Uses `GedcomRepository` properly
+- ✅ `SystemService` - Read-only operations
+- ✅ `TextProcessingService` - Pure processing, no DB
+- ✅ **OCR**: Repository pattern implemented (no service needed - processor handles business logic)
+- ❌ **Missing:** `ResearchService`, `ExtractionService`
+
+#### 5. **Repository Pattern Compliance** ✅ **IN PROGRESS**
+**Existing Repositories:**
+- ✅ `GenealogyDataRepository` - Uses `flush()`, proper pattern (needs base class refactoring)
+- ✅ `JobFileRepository` - **COMPLETED** - Refactored to use `ModelRepository<JobFile>` base classes
+- ✅ `GedcomRepository` - **COMPLETED** - Refactored to use `BaseRepository` with proper error handling
+- ✅ `OcrRepository` - **COMPLETED** - Uses base classes, proper `flush()` pattern
+
+**NEW: Base Repository Architecture**
+- ✅ `BaseRepository` - **IMPLEMENTED** - Standard error handling, logging, transaction management
+- ✅ `ModelRepository<T>` - **IMPLEMENTED** - Generic CRUD operations for single model types
+- ✅ `CacheableMixin` - **IMPLEMENTED** - For frequently accessed entities
+
+**Pattern:** Repositories should use `flush()`, let calling layer manage transactions
+
+#### 6. **Repository Consolidation Opportunity** ✅ **COMPLETED**
+**Problem:** `GedcomRepository` and `GenealogyDataRepository` had significant overlap:
+- Both create Person/Family/Place objects
+- Nearly identical place management and caching
+- Different data input formats but same database operations
+
+**Solution:** ✅ **IMPLEMENTED** - Created inheritance hierarchy:
+```
+BaseRepository
+    ↓
+GenealogyBaseRepository  (shared genealogy operations)
+    ↓                    ↓
+GedcomRepository    GenealogyDataRepository
+```
+
+**Achievements:**
+- ✅ Eliminated duplicate place management code (100+ lines removed)
+- ✅ Standardized person/family creation patterns with `create_basic_person/family`
+- ✅ Maintained single responsibility (different input formats)
+- ✅ All 63 repository tests passing (100% pass rate)
+- ✅ Reduced maintenance burden significantly
+
+**Files Created:**
+- ✅ `web_app/repositories/genealogy_base_repository.py` - Shared genealogy operations
+- ✅ Refactored `GedcomRepository` and `GenealogyDataRepository` to use inheritance
+- ✅ Updated all test suites for new architecture
+
+**Status:** ✅ **COMPLETED** - Repository architecture fully consolidated and tested
+
+#### 6. **Direct Database Access in Non-Repository Code**
+**Files bypassing repository pattern:**
+- Services calling `db.session.commit()` directly
+- Blueprints managing database operations
+- Tasks mixing business logic with persistence
+
+### 🟢 Consolidation Opportunities
+
+#### 7. **Duplicate Utility Functions**
+**Potential duplications found in:**
+- Text processing across multiple modules
+- Date parsing scattered across files
+- Name standardization in multiple places
+- File handling patterns repeated
+
+#### 8. **Blueprint Service Dependencies**
+**Current pattern analysis:**
+- ✅ `main.py` - Uses `system_service` (good)
+- ✅ `prompts.py` - Uses `PromptService` (good) 
+- ✅ `rag.py` - Uses `RAGService` (good)
+- ❌ Other blueprints - Mix direct DB access with service calls
+
+### 🔧 Recommended Fixes Priority
+
+**Phase 1 (Critical):**
+1. ✅ **COMPLETED** - Create `OcrRepository` and refactor `PDFOCRProcessor`
+2. Remove `db.session.commit()` from services, move to repositories
+3. Fix research question method name mismatch
+
+**Phase 2 (Architecture):**
+4. Create missing services: `ResearchService`, `ExtractionService`
+5. Standardize all repositories to use `flush()` instead of `commit()`
+6. Move blueprint DB operations to services/repositories
+
+**Phase 3 (Consolidation):**
+7. Audit and consolidate duplicate utility functions
+8. Standardize service/repository patterns across all modules
+
+**Quality Gate:** All changes must pass existing test suite and maintain 85%+ coverage.

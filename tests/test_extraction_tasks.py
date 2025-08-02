@@ -156,16 +156,36 @@ class TestExtractionTaskManager:
                 if key in os.environ:
                     del os.environ[key]
 
-    def test_load_and_split_text_success(self, temp_text_file, mock_extractor):
-        """Test successful text loading and splitting"""
+    @patch('web_app.services.text_processing_service.TextProcessingService')
+    def test_load_and_split_text_success(self, mock_text_processor_class, temp_text_file, mock_extractor):
+        """Test successful text loading and splitting with unified processor"""
+        # Mock the text processor
+        mock_text_processor = Mock()
+        mock_text_processor_class.return_value = mock_text_processor
+
+        # Mock enriched chunks from unified processor
+        mock_enriched_chunks = [
+            {
+                'content': 'chunk1',
+                'chunk_number': 0,
+                'genealogical_context': {'generation_number': 1}
+            },
+            {
+                'content': 'chunk2',
+                'chunk_number': 1,
+                'genealogical_context': {'generation_number': 2}
+            }
+        ]
+        mock_text_processor.process_corpus_with_anchors.return_value = mock_enriched_chunks
+
         manager = ExtractionTaskManager(temp_text_file)
         manager.extractor = mock_extractor
-        mock_extractor.split_text_intelligently.return_value = ["chunk1", "chunk2"]
 
         manager._load_and_split_text()
 
         assert manager.chunks == ["chunk1", "chunk2"]
-        mock_extractor.split_text_intelligently.assert_called_once()
+        assert manager.enriched_chunks == mock_enriched_chunks
+        mock_text_processor.process_corpus_with_anchors.assert_called_once()
 
     def test_load_and_split_text_file_error(self, temp_text_file, mock_extractor, mock_logger):
         """Test text loading with file error"""
@@ -221,6 +241,19 @@ class TestExtractionTaskManager:
         manager = ExtractionTaskManager(temp_text_file)
         manager.extractor = mock_extractor
 
+        # Set up enriched chunks to simulate unified processor output
+        manager.enriched_chunks = [
+            {
+                'content': 'chunk text',
+                'chunk_number': 0,
+                'genealogical_context': {
+                    'generation_number': 3,
+                    'birth_years': [{'year': 1845}],
+                    'chunk_type': 'family_group'
+                }
+            }
+        ]
+
         mock_prompt = Mock()
         mock_prompt.prompt_text = "Custom prompt"
 
@@ -232,7 +265,14 @@ class TestExtractionTaskManager:
 
         result = manager._process_chunk(0, "chunk text", mock_prompt)
 
-        mock_extractor.extract_from_chunk.assert_called_once_with("chunk text", custom_prompt="Custom prompt")
+        # Verify the enhanced chunk text includes context
+        called_args = mock_extractor.extract_from_chunk.call_args
+        enhanced_text = called_args[0][0]
+        assert "Generation 3" in enhanced_text
+        assert "Birth years mentioned: 1845" in enhanced_text
+        assert "chunk text" in enhanced_text
+        assert called_args[1]['custom_prompt'] == "Custom prompt"
+
         assert result["families"][0]["chunk_id"] == 0
         assert result["isolated_individuals"][0]["chunk_id"] == 0
 
@@ -241,11 +281,21 @@ class TestExtractionTaskManager:
         manager = ExtractionTaskManager(temp_text_file)
         manager.extractor = mock_extractor
 
+        # Set up enriched chunks without genealogical context
+        manager.enriched_chunks = [
+            {
+                'content': 'chunk text',
+                'chunk_number': 0,
+                'genealogical_context': {}  # No context
+            }
+        ]
+
         chunk_data = {"families": [], "isolated_individuals": []}
         mock_extractor.extract_from_chunk.return_value = chunk_data
 
         result = manager._process_chunk(0, "chunk text", None)
 
+        # Should be called with just the chunk text (no context to add)
         mock_extractor.extract_from_chunk.assert_called_once_with("chunk text")
         assert result == {"families": [], "isolated_individuals": []}
 
@@ -457,11 +507,30 @@ class TestExtractionTaskManagerIntegration:
         with patch('web_app.tasks.extraction_tasks.logger') as mock:
             yield mock
 
-    def test_run_extraction_success(self, temp_text_file, mock_extractor, mock_prompt_service,
-                                   mock_repository, mock_current_task, mock_logger):
-        """Test successful complete extraction workflow"""
-        # Setup mocks
-        mock_extractor.split_text_intelligently.return_value = ["chunk1", "chunk2"]
+    @patch('web_app.services.text_processing_service.TextProcessingService')
+    def test_run_extraction_success(self, mock_text_processor_class, temp_text_file, mock_extractor,
+                                   mock_prompt_service, mock_repository, mock_current_task, mock_logger):
+        """Test successful complete extraction workflow with unified processor"""
+        # Mock the text processor
+        mock_text_processor = Mock()
+        mock_text_processor_class.return_value = mock_text_processor
+
+        # Mock enriched chunks from unified processor
+        mock_enriched_chunks = [
+            {
+                'content': 'chunk1',
+                'chunk_number': 0,
+                'genealogical_context': {'generation_number': 1}
+            },
+            {
+                'content': 'chunk2',
+                'chunk_number': 1,
+                'genealogical_context': {'generation_number': 2}
+            }
+        ]
+        mock_text_processor.process_corpus_with_anchors.return_value = mock_enriched_chunks
+
+        # Setup other mocks
         mock_extractor.extract_from_chunk.return_value = {
             "families": [{"family_id": "F001", "children": [{"name": "John"}]}],
             "isolated_individuals": [{"name": "Jane"}]
@@ -499,11 +568,25 @@ class TestExtractionTaskManagerIntegration:
         assert 'processing' in states
         assert 'saving' in states
 
-    def test_run_extraction_with_custom_prompt(self, temp_text_file, mock_extractor, mock_prompt_service,
-                                              mock_repository, mock_current_task, mock_logger):
+    @patch('web_app.services.text_processing_service.TextProcessingService')
+    def test_run_extraction_with_custom_prompt(self, mock_text_processor_class, temp_text_file, mock_extractor,
+                                              mock_prompt_service, mock_repository, mock_current_task, mock_logger):
         """Test extraction with custom prompt"""
-        # Setup mocks
-        mock_extractor.split_text_intelligently.return_value = ["chunk1"]
+        # Mock the text processor
+        mock_text_processor = Mock()
+        mock_text_processor_class.return_value = mock_text_processor
+
+        # Mock enriched chunks from unified processor
+        mock_enriched_chunks = [
+            {
+                'content': 'chunk1',
+                'chunk_number': 0,
+                'genealogical_context': {}  # No context for simplicity
+            }
+        ]
+        mock_text_processor.process_corpus_with_anchors.return_value = mock_enriched_chunks
+
+        # Setup other mocks
         mock_extractor.extract_from_chunk.return_value = {
             "families": [],
             "isolated_individuals": []

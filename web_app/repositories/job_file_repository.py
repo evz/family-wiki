@@ -5,29 +5,27 @@ import os
 import tempfile
 from pathlib import Path
 
-from sqlalchemy.exc import SQLAlchemyError
-
-from web_app.database import db
 from web_app.database.models import JobFile
-from web_app.shared.logging_config import get_project_logger
+from web_app.repositories.base_repository import ModelRepository
 
 
-logger = get_project_logger(__name__)
-
-
-class JobFileRepository:
+class JobFileRepository(ModelRepository[JobFile]):
     """Repository for job file operations"""
+    
+    def __init__(self, db_session=None):
+        """Initialize job file repository"""
+        super().__init__(JobFile, db_session)
 
     def save_uploaded_file(self, file, task_id, job_type, file_type):
         """Save uploaded file to database"""
         if not file or file.filename == '':
             return None
 
-        try:
-            # Read file data
+        def _save_uploaded():
+            # Read file data (this could raise OSError)
             file_data = file.read()
-
-            job_file = JobFile(
+            
+            job_file = self.create(
                 filename=file.filename,
                 content_type=file.content_type or 'application/octet-stream',
                 file_size=len(file_data),
@@ -36,27 +34,22 @@ class JobFileRepository:
                 job_type=job_type,
                 file_type=file_type
             )
-
-            db.session.add(job_file)
-            db.session.commit()
-
-            logger.info(f"Saved uploaded file: {file.filename} for task {task_id}")
+            
+            self.logger.info(f"Saved uploaded file: {file.filename} for task {task_id}")
             return job_file.id
 
-        except SQLAlchemyError as e:
-            logger.error(f"Database error saving uploaded file: {e}")
-            db.session.rollback()
-            return None
+        try:
+            return self.safe_operation(_save_uploaded, f"save uploaded file {file.filename}")
         except OSError as e:
-            logger.error(f"IO error reading uploaded file: {e}")
+            self.logger.error(f"IO error reading uploaded file: {e}")
             return None
         except ValueError as e:
-            logger.error(f"Invalid file data: {e}")
+            self.logger.error(f"Invalid file data: {e}")
             return None
 
     def save_result_file(self, filename, content, content_type, task_id, job_type):
         """Save result file to database"""
-        try:
+        def _save_result():
             if isinstance(content, str):
                 file_data = content.encode('utf-8')
             elif isinstance(content, bytes):
@@ -64,7 +57,7 @@ class JobFileRepository:
             else:
                 raise ValueError(f"Invalid content type: {type(content)}")
 
-            job_file = JobFile(
+            job_file = self.create(
                 filename=filename,
                 content_type=content_type,
                 file_size=len(file_data),
@@ -74,41 +67,31 @@ class JobFileRepository:
                 file_type='output'
             )
 
-            db.session.add(job_file)
-            db.session.commit()
-
-            logger.info(f"Saved result file: {filename} for task {task_id}")
+            self.logger.info(f"Saved result file: {filename} for task {task_id}")
             return job_file.id
 
-        except SQLAlchemyError as e:
-            logger.error(f"Database error saving result file: {e}")
-            db.session.rollback()
-            return None
+        try:
+            return self.safe_operation(_save_result, f"save result file {filename}")
         except (ValueError, TypeError) as e:
-            logger.error(f"Invalid content for result file: {e}")
+            self.logger.error(f"Invalid content for result file: {e}")
             return None
         except UnicodeEncodeError as e:
-            logger.error(f"Encoding error for result file: {e}")
+            self.logger.error(f"Encoding error for result file: {e}")
             return None
 
     def get_file_by_id(self, file_id):
         """Get file by ID"""
-        try:
-            return db.session.get(JobFile, file_id)
-        except SQLAlchemyError as e:
-            logger.error(f"Database error getting file by ID {file_id}: {e}")
-            return None
+        return self.get_by_id(file_id)
 
     def get_files_by_task_id(self, task_id, file_type=None):
         """Get all files for a task"""
-        try:
+        def _get_files():
             query = JobFile.query.filter_by(task_id=task_id)
             if file_type:
                 query = query.filter_by(file_type=file_type)
             return query.all()
-        except SQLAlchemyError as e:
-            logger.error(f"Database error getting files for task {task_id}: {e}")
-            return []
+
+        return self.safe_query(_get_files, f"get files for task {task_id}")
 
     def create_temp_file_from_upload(self, file_id):
         """Create a temporary file from uploaded file data"""
@@ -129,11 +112,11 @@ class JobFileRepository:
 
             temp_fd = None  # File descriptor is now closed
 
-            logger.info(f"Created temp file: {temp_path} from {job_file.filename}")
+            self.logger.info(f"Created temp file: {temp_path} from {job_file.filename}")
             return temp_path
 
         except OSError as e:
-            logger.error(f"OS error creating temp file from upload {file_id}: {e}")
+            self.logger.error(f"OS error creating temp file from upload {file_id}: {e}")
             if temp_fd:
                 os.close(temp_fd)
             if temp_path and os.path.exists(temp_path):
@@ -157,7 +140,7 @@ class JobFileRepository:
             return temp_files
 
         except OSError as e:
-            logger.error(f"Error creating temp files for task {task_id}: {e}")
+            self.logger.error(f"Error creating temp files for task {task_id}: {e}")
             return []
 
     def cleanup_temp_files(self, temp_files):
@@ -166,15 +149,15 @@ class JobFileRepository:
             try:
                 if os.path.exists(temp_file):
                     os.unlink(temp_file)
-                    logger.debug(f"Cleaned up temp file: {temp_file}")
+                    self.logger.debug(f"Cleaned up temp file: {temp_file}")
             except OSError as e:
-                logger.warning(f"Failed to cleanup temp file {temp_file}: {e}")
+                self.logger.warning(f"Failed to cleanup temp file {temp_file}: {e}")
             except PermissionError as e:
-                logger.warning(f"Permission denied cleaning up temp file {temp_file}: {e}")
+                self.logger.warning(f"Permission denied cleaning up temp file {temp_file}: {e}")
 
     def get_download_file(self, task_id, job_type):
         """Get the primary download file for a completed job"""
-        try:
+        def _get_download():
             # Get output files for this task
             output_files = self.get_files_by_task_id(task_id, 'output')
 
@@ -184,6 +167,4 @@ class JobFileRepository:
             # Return the first output file (or we could implement priority logic)
             return output_files[0]
 
-        except SQLAlchemyError as e:
-            logger.error(f"Database error getting download file for task {task_id}: {e}")
-            return None
+        return self.safe_query(_get_download, f"get download file for task {task_id}")

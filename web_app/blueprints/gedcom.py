@@ -5,7 +5,8 @@ import uuid
 
 from flask import Blueprint, flash, redirect, request, url_for
 
-from web_app.blueprints.error_handling import (
+from web_app.database import db
+from web_app.blueprints.blueprint_utils import (
     handle_blueprint_errors,
     safe_file_operation,
     safe_task_submit,
@@ -38,15 +39,16 @@ def start_gedcom():
             logger.info(f"Started GEDCOM task: {task.id}")
         return redirect(url_for('main.index'))
 
-    # Save uploaded file first
-    file_id = safe_file_operation(
-        file_repo.save_uploaded_file,
-        "GEDCOM input file upload",
-        input_file, task_id, 'gedcom', 'input'
-    )
-    if not file_id:
-        flash('Failed to save uploaded input file', 'error')
-        return redirect(url_for('main.index'))
+    # Save uploaded file first with transaction management
+    with db.session.begin():
+        file_id = safe_file_operation(
+            file_repo.save_uploaded_file,
+            "GEDCOM input file upload",
+            input_file, task_id, 'gedcom', 'input'
+        )
+        if not file_id:
+            flash('Failed to save uploaded input file', 'error')
+            return redirect(url_for('main.index'))
 
     # Start the task with the pre-generated task ID
     task = safe_task_submit(generate_gedcom_file.apply_async, "GEDCOM", task_id=task_id)

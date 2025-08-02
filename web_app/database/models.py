@@ -65,8 +65,9 @@ class TextCorpus(db.Model):
 
     # Embedding configuration
     embedding_model = db.Column(db.String(100), default='sentence-transformers/all-MiniLM-L6-v2')
-    chunk_size = db.Column(db.Integer, default=1000)
+    chunk_size = db.Column(db.Integer, default=1500)  # Larger chunks for better genealogy context
     chunk_overlap = db.Column(db.Integer, default=200)
+    query_chunk_limit = db.Column(db.Integer, default=20)  # Number of chunks to retrieve for queries
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
@@ -105,6 +106,13 @@ class SourceText(db.Model):
     # Additional search fields for hybrid RAG
     content_tsvector = db.Column(TSVECTOR)  # PostgreSQL tsvector for full-text search
     dm_codes = db.Column(ARRAY(db.String))  # PostgreSQL array of Daitch-Mokotoff Soundex codes
+
+    # Genealogical context fields for disambiguation
+    generation_number = db.Column(db.Integer)  # 1-13, inherited from generation headers
+    generation_text = db.Column(db.String(100))  # e.g., "DERDE GENERATIE"
+    family_context = db.Column(db.JSON)  # Family mentions within this chunk
+    birth_years = db.Column(ARRAY(db.Integer))  # Birth years found in this chunk
+    chunk_type = db.Column(db.String(50))  # 'family_group', 'individual_details', 'general'
 
     # Metadata
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))

@@ -9,7 +9,7 @@ from kombu.exceptions import ConnectionError
 from kombu.exceptions import OperationalError as KombuOperationalError
 from sqlalchemy.exc import SQLAlchemyError
 
-from web_app.blueprints.error_handling import (
+from web_app.blueprints.blueprint_utils import (
     FileOperationError,
     TaskSubmissionError,
     get_task_status_safely,

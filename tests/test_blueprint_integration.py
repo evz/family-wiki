@@ -228,7 +228,7 @@ class TestBlueprintFunctionality:
     def test_error_handling_task_submission_failure(self, client):
         """Test that task submission errors are handled correctly"""
         with patch('web_app.blueprints.ocr.safe_task_submit') as mock_safe_task:
-            from web_app.blueprints.error_handling import TaskSubmissionError
+            from web_app.blueprints.blueprint_utils import TaskSubmissionError
             mock_safe_task.side_effect = TaskSubmissionError('Redis down')
 
             response = client.post('/ocr/start')

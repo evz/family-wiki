@@ -4,6 +4,7 @@ Prompts management blueprint - simple form-based CRUD operations
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
+from web_app.database import db
 from web_app.services.prompt_service import PromptService
 
 
@@ -82,17 +83,22 @@ def save_prompt():
         else:
             return redirect(url_for('prompts.create_prompt'))
 
-    if prompt_id:
-        # Update existing prompt
-        result = prompt_service.update_prompt(prompt_id, name, prompt_text, description)
-        if result:
-            flash('Prompt updated successfully', 'success')
+    try:
+        if prompt_id:
+            # Update existing prompt with transaction management
+            with db.session.begin():
+                result = prompt_service.update_prompt(prompt_id, name, prompt_text, description)
+                if result:
+                    flash('Prompt updated successfully', 'success')
+                else:
+                    flash('Prompt not found or invalid ID', 'error')
         else:
-            flash('Prompt not found or invalid ID', 'error')
-    else:
-        # Create new prompt
-        prompt_service.create_prompt(name, prompt_text, prompt_type, description)
-        flash('Prompt created successfully', 'success')
+            # Create new prompt with transaction management
+            with db.session.begin():
+                prompt_service.create_prompt(name, prompt_text, prompt_type, description)
+                flash('Prompt created successfully', 'success')
+    except Exception as e:
+        flash('An error occurred while saving the prompt', 'error')
 
     return redirect(url_for('prompts.list_prompts'))
 
@@ -101,11 +107,16 @@ def save_prompt():
 def confirm_delete_prompt(prompt_id):
     """Handle delete confirmation form submission"""
     prompt_service = PromptService()
-    success = prompt_service.delete_prompt(prompt_id)
-
-    if success:
-        flash('Prompt deleted successfully', 'success')
-    else:
-        flash('Failed to delete prompt - prompt not found or invalid ID', 'error')
+    
+    try:
+        # Delete prompt with transaction management
+        with db.session.begin():
+            success = prompt_service.delete_prompt(prompt_id)
+            if success:
+                flash('Prompt deleted successfully', 'success')
+            else:
+                flash('Failed to delete prompt - prompt not found or invalid ID', 'error')
+    except Exception as e:
+        flash('An error occurred while deleting the prompt', 'error')
 
     return redirect(url_for('prompts.list_prompts'))

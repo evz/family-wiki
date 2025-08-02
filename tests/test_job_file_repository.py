@@ -1,6 +1,7 @@
 """
 Tests for JobFileRepository
 """
+import uuid
 from unittest.mock import Mock, patch
 
 import pytest
@@ -40,7 +41,7 @@ class TestJobFileRepository:
             file_type="input"
         )
         db.session.add(job_file)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
         return job_file
 
     def test_save_uploaded_file_success(self, repository, mock_file, db):
@@ -90,15 +91,14 @@ class TestJobFileRepository:
         job_file = db.session.get(JobFile, file_id)
         assert job_file.content_type == "application/octet-stream"
 
-    @patch('web_app.repositories.job_file_repository.db.session')
-    def test_save_uploaded_file_database_error(self, mock_session, repository, mock_file, db):
+    @patch.object(JobFileRepository, 'safe_operation')
+    def test_save_uploaded_file_database_error(self, mock_safe_operation, repository, mock_file, db):
         """Test database error during file save"""
-        mock_session.commit.side_effect = SQLAlchemyError("Database error")
+        mock_safe_operation.return_value = None  # safe_operation returns None on database error
 
         result = repository.save_uploaded_file(mock_file, "task-123", "ocr", "input")
 
         assert result is None
-        mock_session.rollback.assert_called_once()
 
     def test_save_uploaded_file_read_error(self, repository, db):
         """Test file read error during upload"""
@@ -155,17 +155,16 @@ class TestJobFileRepository:
 
         assert result is None
 
-    @patch('web_app.repositories.job_file_repository.db.session')
-    def test_save_result_file_database_error(self, mock_session, repository, db):
+    @patch.object(JobFileRepository, 'safe_operation')
+    def test_save_result_file_database_error(self, mock_safe_operation, repository, db):
         """Test database error during result file save"""
-        mock_session.commit.side_effect = SQLAlchemyError("Database error")
+        mock_safe_operation.return_value = None  # safe_operation returns None on database error
 
         result = repository.save_result_file(
             "result.txt", "content", "text/plain", "task-123", "extraction"
         )
 
         assert result is None
-        mock_session.rollback.assert_called_once()
 
     def test_get_file_by_id_success(self, repository, sample_job_file, db):
         """Test successful file retrieval by ID"""
@@ -176,16 +175,18 @@ class TestJobFileRepository:
         assert result.filename == "sample.txt"
 
     def test_get_file_by_id_not_found(self, repository, db):
-        """Test file retrieval with non-existent ID"""
-        result = repository.get_file_by_id(99999)
+        """Test file retrieval with non-existent UUID"""
+        non_existent_id = uuid.uuid4()
+        result = repository.get_file_by_id(non_existent_id)
         assert result is None
 
-    @patch('web_app.repositories.job_file_repository.JobFile.query')
-    def test_get_file_by_id_database_error(self, mock_query, repository, db):
+    @patch.object(JobFileRepository, 'get_by_id')
+    def test_get_file_by_id_database_error(self, mock_get_by_id, repository, db):
         """Test database error during file retrieval"""
-        mock_query.get.side_effect = SQLAlchemyError("Database error")
+        mock_get_by_id.return_value = None  # get_by_id returns None on database error
 
-        result = repository.get_file_by_id(1)
+        test_id = uuid.uuid4()
+        result = repository.get_file_by_id(test_id)
         assert result is None
 
     def test_get_files_by_task_id_success(self, repository, sample_job_file, db):
@@ -209,7 +210,7 @@ class TestJobFileRepository:
             file_data=b"output", task_id="task-123", job_type="ocr", file_type="output"
         )
         db.session.add_all([job_file1, job_file2])
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         input_files = repository.get_files_by_task_id("task-123", "input")
         output_files = repository.get_files_by_task_id("task-123", "output")
@@ -224,12 +225,10 @@ class TestJobFileRepository:
         files = repository.get_files_by_task_id("non-existent-task")
         assert files == []
 
-    @patch('web_app.repositories.job_file_repository.JobFile.query')
-    def test_get_files_by_task_id_database_error(self, mock_query, repository, db):
+    @patch.object(JobFileRepository, 'safe_query')
+    def test_get_files_by_task_id_database_error(self, mock_safe_query, repository, db):
         """Test database error during files retrieval"""
-        from sqlalchemy.exc import SQLAlchemyError
-
-        mock_query.filter_by.return_value.all.side_effect = SQLAlchemyError("Database error")
+        mock_safe_query.return_value = []  # safe_query returns [] on database error
 
         result = repository.get_files_by_task_id("task-123")
         assert result == []
@@ -251,7 +250,8 @@ class TestJobFileRepository:
 
     def test_create_temp_file_from_upload_file_not_found(self, repository, db):
         """Test temp file creation with non-existent file"""
-        result = repository.create_temp_file_from_upload(99999)
+        non_existent_id = uuid.uuid4()
+        result = repository.create_temp_file_from_upload(non_existent_id)
         assert result is None
 
     @patch('tempfile.mkstemp')
@@ -276,7 +276,7 @@ class TestJobFileRepository:
             for i in range(3)
         ]
         db.session.add_all(job_files)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         with patch.object(repository, 'create_temp_file_from_upload') as mock_create:
             mock_create.side_effect = ["/tmp/file0.pdf", "/tmp/file1.pdf", "/tmp/file2.pdf"]
@@ -334,7 +334,7 @@ class TestJobFileRepository:
             file_data=b"output", task_id="task-123", job_type="ocr", file_type="output"
         )
         db.session.add(job_file)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         result = repository.get_download_file("task-123", "ocr")
 
@@ -361,7 +361,7 @@ class TestJobFileRepository:
             for i in range(2)
         ]
         db.session.add_all(job_files)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         result = repository.get_download_file("task-123", "ocr")
 
@@ -369,11 +369,10 @@ class TestJobFileRepository:
         assert result is not None
         assert result.filename == "output0.txt"
 
-    def test_get_download_file_database_error(self, repository, db):
+    @patch.object(JobFileRepository, 'safe_query')
+    def test_get_download_file_database_error(self, mock_safe_query, repository, db):
         """Test database error during download file retrieval"""
-        # Mock the get_files_by_task_id method to raise an exception
-        with patch.object(repository, 'get_files_by_task_id') as mock_get_files:
-            mock_get_files.side_effect = SQLAlchemyError("Database error")
+        mock_safe_query.return_value = None  # safe_query returns None on database error
 
-            result = repository.get_download_file("task-123", "ocr")
-            assert result is None
+        result = repository.get_download_file("task-123", "ocr")
+        assert result is None

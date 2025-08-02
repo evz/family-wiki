@@ -193,57 +193,65 @@ class TestCorpusProcessingManager:
         # Should return early without error
         manager._ensure_embedding_model_available()
 
-    @patch('web_app.tasks.rag_tasks.db')
-    def test_load_corpus_success(self, mock_db, manager, mock_corpus, sample_corpus_id):
+    def test_load_corpus_success(self, app, manager, mock_corpus, sample_corpus_id):
         """Test successful corpus loading"""
-        mock_db.session.get.return_value = mock_corpus
+        # Mock the rag_repository instance directly
+        manager.rag_repository = MagicMock()
+        manager.rag_repository.get_corpus_by_id.return_value = mock_corpus
 
         manager._load_corpus()
 
         assert manager.corpus == mock_corpus
-        mock_db.session.get.assert_called_once_with(TextCorpus, sample_corpus_id)
+        manager.rag_repository.get_corpus_by_id.assert_called_once_with(sample_corpus_id)
 
-    @patch('web_app.tasks.rag_tasks.db')
-    def test_load_corpus_not_found(self, mock_db, manager, sample_corpus_id):
+    def test_load_corpus_not_found(self, app, manager, sample_corpus_id):
         """Test corpus loading when corpus doesn't exist"""
-        mock_db.session.get.return_value = None
+        # Mock the rag_repository instance directly
+        manager.rag_repository = MagicMock()
+        manager.rag_repository.get_corpus_by_id.return_value = None
 
         with pytest.raises(ValueError) as exc_info:
             manager._load_corpus()
 
         assert "Corpus not found" in str(exc_info.value)
 
-    @patch('web_app.tasks.rag_tasks.db')
-    def test_load_corpus_no_content(self, mock_db, manager, mock_corpus, sample_corpus_id):
+    def test_load_corpus_no_content(self, app, manager, mock_corpus, sample_corpus_id):
         """Test corpus loading when corpus has no raw content"""
         mock_corpus.raw_content = None
-        mock_db.session.get.return_value = mock_corpus
+        # Mock the rag_repository instance directly
+        manager.rag_repository = MagicMock()
+        manager.rag_repository.get_corpus_by_id.return_value = mock_corpus
 
         with pytest.raises(ValueError) as exc_info:
             manager._load_corpus()
 
         assert "Corpus has no raw content to process" in str(exc_info.value)
 
-    @patch('web_app.tasks.rag_tasks.db')
-    def test_update_corpus_status(self, mock_db, manager, mock_corpus):
+    def test_update_corpus_status(self, app, manager, mock_corpus):
         """Test updating corpus status"""
         manager.corpus = mock_corpus
+        # Mock the rag_repository instance directly
+        manager.rag_repository = MagicMock()
+        manager.rag_repository.update_corpus_status.return_value = mock_corpus
 
         manager._update_corpus_status('processing', 'Test error')
 
         assert mock_corpus.processing_status == 'processing'
         assert mock_corpus.processing_error == 'Test error'
-        mock_db.session.commit.assert_called_once()
+        manager.rag_repository.update_corpus_status.assert_called_once_with(manager.corpus_id, 'processing', 'Test error')
 
     @patch('web_app.tasks.rag_tasks.current_task')
-    @patch('web_app.tasks.rag_tasks.db')
     @patch.object(CorpusProcessingManager, '_ensure_embedding_model_available')
     @patch.object(CorpusProcessingManager, '_process_text_content')
     @patch.object(CorpusProcessingManager, '_load_corpus')
-    def test_run_corpus_processing_success(self, mock_load, mock_process, mock_ensure_model, mock_db, mock_task, manager, mock_corpus):
+    def test_run_corpus_processing_success(self, mock_load, mock_process, mock_ensure_model, mock_task, app, manager, mock_corpus):
         """Test successful complete corpus processing workflow"""
         manager.corpus = mock_corpus
         mock_process.return_value = 42  # 42 chunks stored
+        
+        # Mock the rag_repository instance directly
+        manager.rag_repository = MagicMock()
+        manager.rag_repository.update_corpus_status.return_value = mock_corpus
 
         result = manager.run_corpus_processing()
 

@@ -17,8 +17,7 @@ import pytesseract
 from langdetect import LangDetectException, detect
 from PIL import Image, ImageOps
 
-from web_app.database import db
-from web_app.database.models import OcrPage
+from web_app.repositories.ocr_repository import OcrRepository
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -28,6 +27,9 @@ class PDFOCRProcessor:
     def __init__(self, output_dir: str = "extracted_text"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
+        
+        # Repository for database operations
+        self.ocr_repository = OcrRepository()
 
         # Configure Tesseract for Dutch and English
         self.tesseract_config = '--oem 3 --psm 6 -l nld+eng'
@@ -206,7 +208,7 @@ class PDFOCRProcessor:
 
         # Save to database
         processing_time = int((time.time() - start_time) * 1000)
-        return self._save_ocr_result(
+        return self.ocr_repository.save_ocr_result(
             batch_id, pdf_path, page_number,
             text_result['text'], text_result['confidence'], text_result['language'],
             processing_time
@@ -228,11 +230,11 @@ class PDFOCRProcessor:
         try:
             pdf_document = fitz.open(str(pdf_path))
         except (fitz.FileNotFoundError, fitz.FileDataError) as e:
-            return self._save_ocr_error(batch_id, pdf_path.name, page_number, f"Invalid PDF file: {e}")
+            return self.ocr_repository.save_ocr_error(batch_id, pdf_path.name, page_number, f"Invalid PDF file: {e}")
 
         if len(pdf_document) != 1:
             pdf_document.close()
-            return self._save_ocr_error(batch_id, pdf_path.name, page_number,
+            return self.ocr_repository.save_ocr_error(batch_id, pdf_path.name, page_number,
                                       f"PDF must contain exactly 1 page, found {len(pdf_document)} pages")
 
         try:
@@ -245,7 +247,7 @@ class PDFOCRProcessor:
             return {'success': True, 'image': image}
 
         except (RuntimeError, OSError) as e:
-            return self._save_ocr_error(batch_id, pdf_path.name, page_number, f"Image conversion failed: {e}")
+            return self.ocr_repository.save_ocr_error(batch_id, pdf_path.name, page_number, f"Image conversion failed: {e}")
         finally:
             pdf_document.close()
 
@@ -276,7 +278,7 @@ class PDFOCRProcessor:
             }
 
         except pytesseract.TesseractError as e:
-            return self._save_ocr_error(batch_id, filename, page_number, f"OCR processing failed: {e}")
+            return self.ocr_repository.save_ocr_error(batch_id, filename, page_number, f"OCR processing failed: {e}")
 
     def _detect_language(self, text: str) -> str:
         """Detect language of extracted text"""
@@ -288,81 +290,5 @@ class PDFOCRProcessor:
         except LangDetectException:
             return 'unknown'  # Cannot determine language
 
-    def _save_ocr_result(self, batch_id: str, pdf_path: Path, page_number: int,
-                        text: str, confidence: float, language: str, processing_time: int) -> dict:
-        """Save successful OCR result to database"""
-        try:
-            existing = OcrPage.query.filter_by(batch_id=batch_id, filename=pdf_path.name).first()
-
-            if existing:
-                existing.extracted_text = text
-                existing.confidence_score = confidence
-                existing.language = language
-                existing.processing_time_ms = processing_time
-                existing.status = 'completed'
-                existing.error_message = None
-            else:
-                ocr_page = OcrPage(
-                    batch_id=batch_id,
-                    filename=pdf_path.name,
-                    page_number=page_number,
-                    file_path=str(pdf_path),
-                    extracted_text=text,
-                    confidence_score=confidence,
-                    ocr_engine='tesseract',
-                    language=language,
-                    processing_time_ms=processing_time,
-                    status='completed'
-                )
-                db.session.add(ocr_page)
-
-            db.session.commit()
-
-            return {
-                'success': True,
-                'filename': pdf_path.name,
-                'page_number': page_number,
-                'batch_id': batch_id,
-                'text_length': len(text),
-                'confidence_score': confidence,
-                'language': language,
-                'processing_time_ms': processing_time
-            }
-
-        except Exception as e:
-            db.session.rollback()
-            return self._save_ocr_error(batch_id, pdf_path.name, page_number, f"Database error: {e}")
-
-    def _save_ocr_error(self, batch_id: str, filename: str, page_number: int, error_message: str) -> dict:
-        """Save OCR error to database"""
-        logger.error(f"OCR error for {filename}: {error_message}")
-
-        try:
-            existing = OcrPage.query.filter_by(batch_id=batch_id, filename=filename).first()
-
-            if existing:
-                existing.status = 'failed'
-                existing.error_message = error_message
-            else:
-                ocr_page = OcrPage(
-                    batch_id=batch_id,
-                    filename=filename,
-                    page_number=page_number,
-                    status='failed',
-                    error_message=error_message
-                )
-                db.session.add(ocr_page)
-
-            db.session.commit()
-        except Exception as db_error:
-            logger.error(f"Failed to save error to database: {db_error}")
-            db.session.rollback()
-
-        return {
-            'success': False,
-            'filename': filename,
-            'page_number': page_number,
-            'batch_id': batch_id,
-            'error': error_message
-        }
+    # Database operations now handled by OcrRepository
 

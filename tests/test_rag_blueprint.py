@@ -67,7 +67,7 @@ class TestSimplifiedRAGBlueprint:
         prompt = ExtractionPrompt(name="Test RAG Prompt", prompt_text="Answer: {answer}", prompt_type="rag")
         db.session.add(corpus)
         db.session.add(prompt)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         # Mock RAG response
         mock_rag_instance = mock_rag_service_class.return_value
@@ -90,6 +90,7 @@ class TestSimplifiedRAGBlueprint:
             question='What is genealogy?',
             prompt_id=str(prompt.id),
             corpus_id=str(corpus.id),
+            max_chunks=None,
             similarity_threshold=0.55
         )
 
@@ -99,7 +100,7 @@ class TestSimplifiedRAGBlueprint:
         prompt = ExtractionPrompt(name="Test Prompt", prompt_text="Test", prompt_type="rag")
         db.session.add(corpus)
         db.session.add(prompt)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         response = client.post('/rag/ask-question', data={
             'question': '',  # Empty question
@@ -113,7 +114,7 @@ class TestSimplifiedRAGBlueprint:
         """Test asking question without selecting corpus"""
         prompt = ExtractionPrompt(name="Test Prompt", prompt_text="Test", prompt_type="rag")
         db.session.add(prompt)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         response = client.post('/rag/ask-question', data={
             'question': 'What is genealogy?',
@@ -127,7 +128,7 @@ class TestSimplifiedRAGBlueprint:
         """Test asking question without selecting prompt"""
         corpus = TextCorpus(name="Test Corpus", processing_status="completed")
         db.session.add(corpus)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         response = client.post('/rag/ask-question', data={
             'question': 'What is genealogy?',
@@ -143,7 +144,7 @@ class TestSimplifiedRAGBlueprint:
         prompt = ExtractionPrompt(name="Test Prompt", prompt_text="Test", prompt_type="rag")
         db.session.add(corpus)
         db.session.add(prompt)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         response = client.post('/rag/ask-question', data={
             'question': 'What is genealogy?',
@@ -180,7 +181,7 @@ class TestSimplifiedRAGBlueprint:
         # Create test corpus
         corpus = TextCorpus(name="Test Corpus", description="Test", processing_status="completed")
         db.session.add(corpus)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         # Mock RAG service deletion
         mock_rag_instance = mock_rag_service_class.return_value
@@ -221,7 +222,7 @@ class TestSimplifiedRAGBlueprint:
         # Create test corpus
         corpus = TextCorpus(name="Test Corpus", description="Test", processing_status="completed")
         db.session.add(corpus)
-        db.session.commit()
+        db.session.flush()  # Use flush instead of commit for tests
 
         # Mock RAG service to raise generic error
         mock_rag_instance = mock_rag_service_class.return_value
