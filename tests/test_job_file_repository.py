@@ -5,7 +5,6 @@ import uuid
 from unittest.mock import Mock, patch
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
 
 from web_app.database.models import JobFile
 from web_app.repositories.job_file_repository import JobFileRepository

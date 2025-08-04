@@ -373,7 +373,6 @@ class TestGedcomRepository:
 
     def test_integration_create_person_with_real_places(self, db):
         """Integration test: create person with real database session"""
-        from web_app.database import db
 
         repository = GedcomRepository()
 
@@ -404,7 +403,6 @@ class TestGedcomRepository:
 
     def test_integration_family_workflow(self, db):
         """Integration test: complete family creation workflow"""
-        from web_app.database import db
 
         repository = GedcomRepository()
 

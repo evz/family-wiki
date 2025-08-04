@@ -11,7 +11,7 @@ from web_app.repositories.base_repository import ModelRepository
 
 class JobFileRepository(ModelRepository[JobFile]):
     """Repository for job file operations"""
-    
+
     def __init__(self, db_session=None):
         """Initialize job file repository"""
         super().__init__(JobFile, db_session)
@@ -24,7 +24,7 @@ class JobFileRepository(ModelRepository[JobFile]):
         def _save_uploaded():
             # Read file data (this could raise OSError)
             file_data = file.read()
-            
+
             job_file = self.create(
                 filename=file.filename,
                 content_type=file.content_type or 'application/octet-stream',
@@ -34,7 +34,7 @@ class JobFileRepository(ModelRepository[JobFile]):
                 job_type=job_type,
                 file_type=file_type
             )
-            
+
             self.logger.info(f"Saved uploaded file: {file.filename} for task {task_id}")
             return job_file.id
 

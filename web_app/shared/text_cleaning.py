@@ -150,12 +150,12 @@ def canonicalise_surname(raw: str) -> dict[str, str | None]:
 def clean_corpus_text(raw: str, *, spellfix: bool = True, remove_headers: bool = True) -> str:
     """
     Enhanced text cleaning specifically for corpus preprocessing
-    
+
     Args:
         raw: Raw text content
         spellfix: Whether to apply OCR spell correction
         remove_headers: Whether to remove common headers/footers
-        
+
     Returns:
         Cleaned text ready for chunking and embedding
     """

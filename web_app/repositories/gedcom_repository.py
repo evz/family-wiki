@@ -2,7 +2,7 @@
 Repository for GEDCOM-related database operations
 """
 
-from web_app.database.models import Family, Occupation, Person, Place
+from web_app.database.models import Family, Occupation, Person
 from web_app.repositories.genealogy_base_repository import GenealogyBaseRepository
 
 
@@ -17,7 +17,7 @@ class GedcomRepository(GenealogyBaseRepository):
         def _create_person():
             # Use base class to create person with common fields
             person = self.create_basic_person(person_data)
-            
+
             # Add GEDCOM-specific fields
             person.gedcom_id = person_data.get('gedcom_id')
             person.sex = person_data.get('sex', '')
@@ -39,7 +39,7 @@ class GedcomRepository(GenealogyBaseRepository):
         def _create_family():
             # Use base class to create family with common fields
             family = self.create_basic_family(family_data)
-            
+
             # Add GEDCOM-specific fields
             family.family_identifier = family_data.get('gedcom_id')
 

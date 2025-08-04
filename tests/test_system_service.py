@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from web_app.services.system_service import SystemService, system_service
+from web_app.services.system_service import SystemService
 
 
 class TestSystemService:
@@ -238,10 +238,6 @@ class TestSystemService:
             expected_path = "web_app/pdf_processing/extracted_text/consolidated_text.txt"
             assert result['text_data']['path'] == expected_path
 
-    def test_global_service_instance(self):
-        """Test that global service instance is available"""
-        assert system_service is not None
-        assert isinstance(system_service, SystemService)
 
     def test_service_instance_independence(self):
         """Test that multiple service instances are independent"""

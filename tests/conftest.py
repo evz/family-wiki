@@ -136,20 +136,7 @@ def db(app):
     """Create database for testing with automatic transaction rollback"""
     with app.app_context():
         # Import all models to ensure they're registered with SQLAlchemy
-        from web_app.database.models import (
-            Event,
-            ExtractionPrompt,
-            Family,
-            JobFile,
-            Marriage,
-            OcrPage,
-            Person,
-            Place,
-            Query,
-            SourceText,
-            TextCorpus,
-        )
-        
+
         _db.create_all()
 
         # Start a transaction that will be rolled back after the test
@@ -165,10 +152,10 @@ def db(app):
             except Exception:
                 # If transaction is already closed, ensure session rollback
                 _db.session.rollback()
-            
+
             # Drop all tables before closing connections
             _db.drop_all()
-            
+
             # Close all connections to prevent connection pool exhaustion
             _db.session.close()
             _db.engine.dispose()

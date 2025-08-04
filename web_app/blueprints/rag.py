@@ -6,11 +6,6 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 from web_app.blueprints.blueprint_utils import handle_blueprint_errors, safe_task_submit
 from web_app.repositories.rag_repository import RAGRepository
-from web_app.services.embedding_models import (
-    DEFAULT_EMBEDDING_MODEL,
-    get_available_embedding_models,
-    validate_embedding_model,
-)
 from web_app.services.exceptions import (
     ConnectionError,
     DatabaseError,
@@ -21,6 +16,7 @@ from web_app.services.exceptions import (
 )
 from web_app.services.prompt_service import PromptService
 from web_app.services.rag_service import RAGService
+from web_app.services.system_service import DEFAULT_EMBEDDING_MODEL, SystemService
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.rag_tasks import process_corpus_parallel
 
@@ -61,7 +57,8 @@ def corpora_list():
 def create_corpus():
     """Create a new text corpus with uploaded content"""
     # Get available embedding models for the form
-    available_models = get_available_embedding_models()
+    system_service = SystemService()
+    available_models = system_service.get_available_embedding_models()
 
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -81,7 +78,7 @@ def create_corpus():
             return render_template('rag/create_corpus.html', available_models=available_models)
 
         # Validate embedding model
-        if not validate_embedding_model(embedding_model):
+        if not system_service.validate_embedding_model(embedding_model):
             flash('Invalid embedding model selected', 'error')
             return render_template('rag/create_corpus.html', available_models=available_models)
 
@@ -120,26 +117,16 @@ def create_corpus():
             flash('File must be valid UTF-8 encoded text', 'error')
             return render_template('rag/create_corpus.html', available_models=available_models)
 
-        # Create corpus with all parameters through service
+        # Create corpus and start processing through service (handles transaction timing)
         rag_service = RAGService()
-        corpus = rag_service.create_corpus(
-            name=name, 
+        corpus, task = rag_service.create_corpus_and_start_processing(
+            name=name,
             description=description,
+            raw_content=content,
             embedding_model=embedding_model,
             chunk_size=chunk_size_int,
             query_chunk_limit=query_chunk_limit_int,
             processing_status='pending'
-        )
-
-        # Store the raw content - this should be handled by the service too
-        # For now, we'll update this specific field directly since it's not persisted to DB
-        corpus.raw_content = content
-
-        # Start background processing task (parallel version)
-        task = safe_task_submit(
-            process_corpus_parallel.delay,
-            "parallel corpus processing",
-            str(corpus.id)
         )
 
         if task:

@@ -30,9 +30,9 @@ class TestGenerateGedcomFileTask:
 
     @pytest.fixture
     def mock_gedcom_service(self):
-        """Mock gedcom_service"""
-        with patch('web_app.tasks.gedcom_tasks.gedcom_service') as mock:
-            yield mock
+        """Mock GedcomService class"""
+        with patch('web_app.tasks.gedcom_tasks.GedcomService') as mock_class:
+            yield mock_class.return_value
 
     @pytest.fixture
     def mock_current_task(self):

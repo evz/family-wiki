@@ -8,7 +8,7 @@ from celery.exceptions import Retry
 from sqlalchemy.exc import SQLAlchemyError
 
 from web_app.repositories.job_file_repository import JobFileRepository
-from web_app.services.gedcom_service import gedcom_service
+from web_app.services.gedcom_service import GedcomService
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.celery_app import celery
 
@@ -49,6 +49,7 @@ def generate_gedcom_file(self, input_file: str = None, output_file: str = None):
         )
 
         # Generate GEDCOM using the service
+        gedcom_service = GedcomService()
         result = gedcom_service.generate_gedcom(
             input_file=input_file,
             output_file=output_file

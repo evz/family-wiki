@@ -16,7 +16,8 @@ def init_db():
 
     # Load default prompts (avoiding circular import by importing here)
     try:
-        from web_app.services.prompt_service import prompt_service
+        from web_app.services.prompt_service import PromptService
+        prompt_service = PromptService()
         prompt_service.load_default_prompts()
     except Exception as e:
         print(f"Warning: Could not load default prompts: {e}")

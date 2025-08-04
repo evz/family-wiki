@@ -140,11 +140,11 @@ class SourceText(db.Model):
     def calculate_cosine_similarity(embedding_a, embedding_b):
         """
         Calculate cosine similarity between two embeddings
-        
+
         Args:
             embedding_a: First embedding (numpy array or list)
             embedding_b: Second embedding (numpy array or list)
-            
+
         Returns:
             float: Cosine similarity score between -1 and 1
                   1 = identical, 0 = orthogonal, -1 = opposite
@@ -184,11 +184,11 @@ class SourceText(db.Model):
         # Build SQL query with proper pgvector vector casting
         # Use string formatting for the vector literal to avoid parameter binding issues
         base_query = f"""
-            SELECT id, corpus_id, filename, page_number, chunk_number, content, 
-                   content_hash, embedding, embedding_model, token_count, 
+            SELECT id, corpus_id, filename, page_number, chunk_number, content,
+                   content_hash, embedding, embedding_model, token_count,
                    created_at, updated_at,
                    embedding <=> '{vector_str}'::vector as distance
-            FROM source_texts 
+            FROM source_texts
             WHERE embedding IS NOT NULL
         """
 

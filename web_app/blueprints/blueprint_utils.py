@@ -37,7 +37,7 @@ def safe_task_submit(task_func: Callable, task_name: str, *args, **kwargs) -> An
 
     Returns:
         Task object if successful, None if failed
-        
+
     Raises:
         TaskSubmissionError: For task submission failures
     """
@@ -64,7 +64,7 @@ def safe_file_operation(operation_func: Callable, operation_name: str, *args, **
 
     Returns:
         Result of the operation if successful
-        
+
     Raises:
         FileOperationError: For file operation failures
     """
@@ -94,7 +94,7 @@ def safe_database_operation(operation_func: Callable, operation_name: str, *args
 
     Returns:
         Result of the operation if successful
-        
+
     Raises:
         SQLAlchemyError: For database operation failures (re-raised with context)
     """
@@ -110,7 +110,7 @@ def safe_database_operation(operation_func: Callable, operation_name: str, *args
 
 def handle_blueprint_errors(redirect_url: str = 'main.index'):
     """Decorator to handle common blueprint errors with consistent responses.
-    
+
     Args:
         redirect_url: URL endpoint to redirect to on error
     """
@@ -139,11 +139,11 @@ def handle_blueprint_errors(redirect_url: str = 'main.index'):
 
 def get_task_status_safely(task, task_id: str) -> dict:
     """Safely get task status with comprehensive error handling.
-    
+
     Args:
         task: Celery task object
         task_id: Task ID for logging
-        
+
     Returns:
         Dictionary with status information
     """

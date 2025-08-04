@@ -8,7 +8,6 @@ import pytest
 import requests
 import requests_mock
 
-from web_app.database.models import TextCorpus
 from web_app.tasks.rag_tasks import CorpusProcessingManager, process_corpus
 
 
@@ -248,7 +247,7 @@ class TestCorpusProcessingManager:
         """Test successful complete corpus processing workflow"""
         manager.corpus = mock_corpus
         mock_process.return_value = 42  # 42 chunks stored
-        
+
         # Mock the rag_repository instance directly
         manager.rag_repository = MagicMock()
         manager.rag_repository.update_corpus_status.return_value = mock_corpus

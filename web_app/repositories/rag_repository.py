@@ -3,7 +3,9 @@ Repository for RAG (Retrieval-Augmented Generation) database operations
 """
 
 import uuid
-from sqlalchemy import select, delete, func, text
+
+from sqlalchemy import delete, func, select, text
+
 from web_app.database.models import ExtractionPrompt, Query, SourceText, TextCorpus
 from web_app.repositories.base_repository import BaseRepository
 
@@ -20,6 +22,7 @@ class RAGRepository(BaseRepository):
             corpus = TextCorpus(
                 name=name,
                 description=description,
+                raw_content=kwargs.get('raw_content'),
                 is_active=kwargs.get('is_active', True),
                 chunk_size=kwargs.get('chunk_size', 1500),
                 chunk_overlap=kwargs.get('chunk_overlap', 200),
@@ -52,7 +55,7 @@ class RAGRepository(BaseRepository):
         """Get corpus by ID"""
         if isinstance(corpus_id, str):
             corpus_id = uuid.UUID(corpus_id)
-        
+
         return self.db_session.get(TextCorpus, corpus_id)
 
     def update_corpus_status(self, corpus_id: str | uuid.UUID, status: str, error: str = None) -> TextCorpus:
@@ -62,11 +65,11 @@ class RAGRepository(BaseRepository):
                 corpus_id_uuid = uuid.UUID(corpus_id)
             else:
                 corpus_id_uuid = corpus_id
-                
+
             corpus = self.db_session.get(TextCorpus, corpus_id_uuid)
             if not corpus:
                 raise ValueError(f"Corpus not found: {corpus_id}")
-            
+
             corpus.processing_status = status
             corpus.processing_error = error
             return corpus
@@ -80,7 +83,7 @@ class RAGRepository(BaseRepository):
                 corpus_id_uuid = uuid.UUID(corpus_id)
             else:
                 corpus_id_uuid = corpus_id
-                
+
             source_text = SourceText(
                 corpus_id=corpus_id_uuid,
                 filename=kwargs.get('filename'),
@@ -110,7 +113,7 @@ class RAGRepository(BaseRepository):
                 corpus_id_uuid = uuid.UUID(corpus_id)
             else:
                 corpus_id_uuid = corpus_id
-                
+
             stmt = select(SourceText).filter_by(
                 corpus_id=corpus_id_uuid,
                 content_hash=content_hash
@@ -126,11 +129,11 @@ class RAGRepository(BaseRepository):
             corpus_id = kwargs.get('corpus_id')
             if isinstance(corpus_id, str):
                 kwargs['corpus_id'] = uuid.UUID(corpus_id)
-                
+
             conversation_id = kwargs.get('conversation_id')
             if isinstance(conversation_id, str):
                 kwargs['conversation_id'] = uuid.UUID(conversation_id)
-            
+
             query = Query(**kwargs)
             self.db_session.add(query)
             return query
@@ -144,7 +147,7 @@ class RAGRepository(BaseRepository):
                 corpus_id_uuid = uuid.UUID(corpus_id)
             else:
                 corpus_id_uuid = corpus_id
-                
+
             corpus = self.db_session.get(TextCorpus, corpus_id_uuid)
             if not corpus:
                 raise ValueError(f"Corpus not found: {corpus_id}")
@@ -155,7 +158,7 @@ class RAGRepository(BaseRepository):
             chunk_count = self.db_session.execute(
                 select(func.count(SourceText.id)).filter_by(corpus_id=corpus_id_uuid)
             ).scalar()
-            
+
             query_count = self.db_session.execute(
                 select(func.count(Query.id)).filter_by(corpus_id=corpus_id_uuid)
             ).scalar()
@@ -193,7 +196,7 @@ class RAGRepository(BaseRepository):
             chunk_count = self.db_session.execute(
                 select(func.count(SourceText.id)).filter_by(corpus_id=corpus_id_uuid)
             ).scalar()
-            
+
             unique_files = self.db_session.execute(
                 select(func.count(func.distinct(SourceText.filename))).filter_by(corpus_id=corpus_id_uuid)
             ).scalar()
@@ -306,7 +309,7 @@ class RAGRepository(BaseRepository):
     def find_similar(self, query_embedding, corpus_id: str | uuid.UUID = None, limit: int = 5, similarity_threshold: float = 0.7) -> list[tuple[SourceText, float]]:
         """Find text chunks similar to the query embedding using cosine similarity"""
         from sqlalchemy import text
-        
+
         def _find_similar():
             # Convert numpy array to list for pgvector compatibility
             if hasattr(query_embedding, 'tolist'):
@@ -337,7 +340,7 @@ class RAGRepository(BaseRepository):
 
             query = text(f"""
                 SELECT *, (1 - (embedding <=> '{vector_str}'::vector)) as similarity
-                FROM source_texts 
+                FROM source_texts
                 {where_clause}
                 AND (1 - (embedding <=> '{vector_str}'::vector)) >= :similarity_threshold
                 ORDER BY embedding <=> '{vector_str}'::vector
@@ -345,7 +348,7 @@ class RAGRepository(BaseRepository):
             """)
 
             result = self.db_session.execute(query, params)
-            
+
             # Convert results to SourceText objects with similarity scores
             results = []
             for row in result:
@@ -395,11 +398,11 @@ class RAGRepository(BaseRepository):
         """Start a new conversation and return the conversation_id"""
         return uuid.uuid4()
 
-    def hybrid_search(self, query_text: str, corpus_id: str | uuid.UUID, query_embedding: list[float], 
-                     query_dm_codes: list[str], vec_limit: int = 25, trgm_limit: int = 20, 
+    def hybrid_search(self, query_text: str, corpus_id: str | uuid.UUID, query_embedding: list[float],
+                     query_dm_codes: list[str], vec_limit: int = 25, trgm_limit: int = 20,
                      phon_limit: int = 40, limit: int = 5) -> list[tuple]:
         """Execute hybrid search query using RRF combining vector, trigram, full-text, and phonetic search"""
-        
+
         def _hybrid_search():
             if isinstance(corpus_id, str):
                 corpus_id_uuid = uuid.UUID(corpus_id)
@@ -430,7 +433,7 @@ class RAGRepository(BaseRepository):
                     plainto_tsquery('dutch', :query_text) AS q_ts,
                     {dm_codes_str} AS q_dm
                 ),
-                
+
                 vec AS (
                   SELECT id,
                          row_number() OVER () AS vec_rank
@@ -440,7 +443,7 @@ class RAGRepository(BaseRepository):
                   ORDER  BY embedding <=> q_vec
                   LIMIT  :vec_limit
                 ),
-                
+
                 trgm AS (
                   SELECT id,
                          row_number() OVER (ORDER BY similarity(content, :query_text) DESC) AS tg_rank
@@ -449,7 +452,7 @@ class RAGRepository(BaseRepository):
                     AND  content % :query_text
                   LIMIT  :trgm_limit
                 ),
-                
+
                 fts AS (
                   SELECT id,
                          row_number() OVER (ORDER BY ts_rank(content_tsvector, q_ts) DESC) AS fts_rank
@@ -458,7 +461,7 @@ class RAGRepository(BaseRepository):
                     AND  content_tsvector @@ q_ts
                   LIMIT  :trgm_limit
                 ),
-                
+
                 phon AS (
                   SELECT id,
                          row_number() OVER () AS ph_rank
@@ -468,7 +471,7 @@ class RAGRepository(BaseRepository):
                     AND  array_length(q_dm, 1) > 0
                   LIMIT  :phon_limit
                 ),
-                
+
                 rrf AS (
                   SELECT id, 1.0/(60+vec_rank) AS score FROM vec
                   UNION ALL
@@ -478,13 +481,13 @@ class RAGRepository(BaseRepository):
                   UNION ALL
                   SELECT id, 1.0/(80+ph_rank) AS score FROM phon
                 )
-                
-                SELECT st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number, 
-                       st.content, st.content_hash, st.embedding, st.embedding_model, 
+
+                SELECT st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number,
+                       st.content, st.content_hash, st.embedding, st.embedding_model,
                        st.token_count, st.created_at, st.updated_at, st.content_tsvector,
                        st.dm_codes, st.generation_number, st.generation_text, st.family_context,
                        st.birth_years, st.chunk_type, SUM(rrf.score) as combined_score
-                FROM   rrf 
+                FROM   rrf
                 JOIN   source_texts st ON rrf.id = st.id
                 GROUP  BY st.id, st.corpus_id, st.filename, st.page_number, st.chunk_number,
                           st.content, st.content_hash, st.embedding, st.embedding_model,
@@ -506,7 +509,7 @@ class RAGRepository(BaseRepository):
             })
 
             rows = result.fetchall()
-            
+
             # Convert results to SourceText objects with scores
             results = []
             for row in rows:
@@ -532,7 +535,7 @@ class RAGRepository(BaseRepository):
                     chunk_type=row.chunk_type
                 )
                 results.append((source_text, float(row.combined_score)))
-            
+
             return results
 
         return self.safe_query(_hybrid_search, f"hybrid search for corpus {corpus_id}")

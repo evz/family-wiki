@@ -34,7 +34,8 @@ try:
     print('Database migrations applied successfully!')
     
     # Load default prompts
-    from web_app.services.prompt_service import prompt_service
+    from web_app.services.prompt_service import PromptService
+    prompt_service = PromptService()
     prompt_service.load_default_prompts()
     print('Default prompts loaded!')
 except Exception as e:

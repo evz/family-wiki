@@ -6,6 +6,7 @@ exclude = [
     "__pycache__",
     "web_app/pdf_processing/pdfs",
     "web_app/pdf_processing/extracted_text",
+    "migrations/",
 ]
 
 # Target Python 3.12

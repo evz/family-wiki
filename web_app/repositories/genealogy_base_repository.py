@@ -38,7 +38,7 @@ class GenealogyBaseRepository(BaseRepository):
             return new_place
 
         result = self.safe_operation(_get_or_create_place, f"get or create place {place_name}")
-        
+
         # Cache the result and return it
         if result:
             self.place_cache[place_name] = result
@@ -75,7 +75,7 @@ class GenealogyBaseRepository(BaseRepository):
     def create_basic_person(self, person_data: dict) -> Person:
         """Create a Person with common fields - to be extended by subclasses"""
         person = Person()
-        
+
         # Set common fields that exist in both data formats
         person.given_names = person_data.get('given_names', '')
         person.surname = person_data.get('surname', '')
@@ -101,7 +101,7 @@ class GenealogyBaseRepository(BaseRepository):
     def create_basic_family(self, family_data: dict) -> Family:
         """Create a Family with common fields - to be extended by subclasses"""
         family = Family()
-        
+
         # Set common fields
         family.marriage_date = family_data.get('marriage_date', '')
         family.notes = family_data.get('notes', '')

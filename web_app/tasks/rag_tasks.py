@@ -154,7 +154,7 @@ class CorpusProcessingManager:
         try:
             self._pull_model_with_progress(self.corpus.embedding_model)
         except Exception as e:
-            raise Exception(f"Error pulling embedding model: {str(e)}")
+            raise Exception(f"Error pulling embedding model: {str(e)}") from e
 
         # Verify model is now available
         if not self._is_model_available(self.corpus.embedding_model):
@@ -163,7 +163,7 @@ class CorpusProcessingManager:
     def handle_processing_error(self, error: Exception, error_context: str = ""):
         """
         Handle corpus processing errors by updating task state and corpus status
-        
+
         Args:
             error: The exception that occurred
             error_context: Additional context for the error message
@@ -249,10 +249,10 @@ class CorpusProcessingManager:
 def process_corpus(self, corpus_id: str):
     """
     Process corpus text content and create embeddings
-    
+
     Args:
         corpus_id: UUID of the corpus to process
-        
+
     Returns:
         dict: Processing results with success status and statistics
     """
@@ -281,7 +281,7 @@ def process_chunk(self, corpus_id: str, chunk_text: str, chunk_number: int, file
                  page_number: int = None, content_hash: str = None):
     """
     Process a single text chunk in parallel
-    
+
     Args:
         corpus_id: UUID of the corpus
         chunk_text: The text content to process
@@ -289,7 +289,7 @@ def process_chunk(self, corpus_id: str, chunk_text: str, chunk_number: int, file
         filename: Source filename
         page_number: Page number (optional)
         content_hash: Content hash for deduplication
-        
+
     Returns:
         dict: Processing results for this chunk
     """
@@ -362,11 +362,11 @@ def process_chunk(self, corpus_id: str, chunk_text: str, chunk_number: int, file
 def finalize_corpus(self, chunk_results: list, corpus_id: str):
     """
     Finalize corpus processing after all chunks are complete
-    
+
     Args:
         chunk_results: List of results from all chunk processing tasks
         corpus_id: UUID of the corpus to finalize
-        
+
     Returns:
         dict: Final processing summary
     """
@@ -440,10 +440,10 @@ def finalize_corpus(self, chunk_results: list, corpus_id: str):
 def process_corpus_parallel(self, corpus_id: str):
     """
     Process corpus text content with parallel chunk processing
-    
+
     Args:
         corpus_id: UUID of the corpus to process
-        
+
     Returns:
         dict: Processing results with success status and statistics
     """

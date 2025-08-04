@@ -5,12 +5,12 @@ import uuid
 
 from flask import Blueprint, flash, redirect, request, url_for
 
-from web_app.database import db
 from web_app.blueprints.blueprint_utils import (
     handle_blueprint_errors,
     safe_file_operation,
     safe_task_submit,
 )
+from web_app.database import db
 from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.ocr_tasks import process_pdfs_ocr

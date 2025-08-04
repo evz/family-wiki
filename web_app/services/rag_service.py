@@ -9,6 +9,8 @@ from pathlib import Path
 import requests
 from flask import current_app
 
+from web_app.blueprints.blueprint_utils import safe_task_submit
+from web_app.database import db
 from web_app.repositories.rag_repository import RAGRepository
 from web_app.services.exceptions import (
     ExternalServiceError,
@@ -84,6 +86,35 @@ class RAGService:
         corpus = self.rag_repository.create_corpus(name=name, description=description, **kwargs)
         self.logger.info(f"Created corpus: {name}")
         return corpus
+
+    @handle_service_exceptions(logger)
+    def create_corpus_and_start_processing(self, name: str, description: str = "", raw_content: str = None, **kwargs):
+        """Create a new text corpus and start background processing
+        
+        This method ensures proper transaction management by committing the corpus
+        before starting the background task, preventing race conditions.
+        """
+        # Create corpus with all parameters
+        corpus = self.rag_repository.create_corpus(
+            name=name, 
+            description=description, 
+            raw_content=raw_content,
+            **kwargs
+        )
+        
+        # CRITICAL: Commit the transaction to ensure corpus is available for background task
+        db.session.commit()
+        self.logger.info(f"Created and committed corpus: {name}")
+        
+        # Now start the background task - corpus is guaranteed to be available
+        from web_app.tasks.rag_tasks import process_corpus_parallel
+        task = safe_task_submit(
+            process_corpus_parallel.delay,
+            "parallel corpus processing",
+            str(corpus.id)
+        )
+        
+        return corpus, task
 
     @handle_service_exceptions(logger)
     def get_active_corpus(self):
@@ -177,7 +208,7 @@ class RAGService:
                 'birth_years': [by['year'] for by in gen_context['birth_years']],
                 'chunk_type': gen_context['chunk_type']
             }
-            
+
             self.rag_repository.create_source_text(corpus_id, **source_text_data)
             stored_count += 1
 
@@ -268,9 +299,9 @@ class RAGService:
         Perform hybrid search using Reciprocal Rank Fusion (RRF) combining:
         1. Vector similarity (semantic search)
         2. Trigram similarity (fuzzy text matching)
-        3. Full-text search (exact keyword matching)  
+        3. Full-text search (exact keyword matching)
         4. Phonetic matching (Daitch-Mokotoff codes for genealogy names)
-        
+
         Args:
             query_text: The search query
             corpus_id: ID of corpus to search (uses active if None)
@@ -278,11 +309,10 @@ class RAGService:
             vec_limit: Number of results from vector search
             trgm_limit: Number of results from trigram search
             phon_limit: Number of results from phonetic search
-            
+
         Returns:
             List of (SourceText, combined_score) tuples ordered by RRF score
         """
-        from sqlalchemy import text
 
         # Use active corpus if none specified
         if not corpus_id:
@@ -332,14 +362,14 @@ class RAGService:
     def conversation_aware_search(self, question: str, conversation_id: str = None, corpus_id: str = None, limit: int = 5, similarity_threshold: float = 0.55) -> list[tuple]:
         """
         Perform semantic search with conversation context awareness
-        
+
         Args:
             question: Current question to search for
             conversation_id: UUID of the conversation for context (optional)
             corpus_id: ID of corpus to search (uses active if None)
             limit: Maximum number of chunks to retrieve
             similarity_threshold: Minimum similarity threshold
-            
+
         Returns:
             List of (SourceText, similarity_score) tuples
         """
@@ -354,7 +384,7 @@ class RAGService:
                     conversation_id = uuid.UUID(conversation_id)
 
                 # Get previous queries in this conversation
-                previous_queries = Query.get_conversation(conversation_id)
+                previous_queries = self.rag_repository.get_conversation(conversation_id)
 
                 if previous_queries:
                     # Combine recent conversation context with current question
@@ -508,7 +538,7 @@ SOURCE MATERIALS:
             raise NotFoundError(f"Corpus not found: {corpus_id}")
 
         stats = self.rag_repository.get_corpus_stats(corpus_id)
-        
+
         return {
             'corpus_name': corpus.name,
             'chunk_count': stats['chunk_count'],
@@ -520,10 +550,10 @@ SOURCE MATERIALS:
     def delete_corpus(self, corpus_id: str) -> dict:
         """
         Delete a corpus and all its associated source texts
-        
+
         Args:
             corpus_id: UUID of the corpus to delete
-            
+
         Returns:
             Dict with deletion results and statistics
         """
@@ -536,7 +566,7 @@ SOURCE MATERIALS:
             else:
                 # Re-raise as is for UUID validation errors - the exception handler will convert it
                 raise
-        
+
         self.logger.info(f"Successfully deleted corpus '{deletion_result['corpus_name']}'")
 
         # Build comprehensive deletion message
@@ -589,7 +619,7 @@ SOURCE MATERIALS:
             year_range = f"{min(birth_years)}-{max(birth_years)}" if len(set(birth_years)) > 1 else str(birth_years[0])
             summary_parts.append(f"Time period: {year_range}")
 
-        if len(set(chunk.filename for chunk, _ in search_results)) > 1:
+        if len({chunk.filename for chunk, _ in search_results}) > 1:
             summary_parts.append("Multiple source documents referenced")
 
         summary = ". ".join(summary_parts) if summary_parts else "General genealogical content"

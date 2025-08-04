@@ -97,7 +97,7 @@ def save_prompt():
             with db.session.begin():
                 prompt_service.create_prompt(name, prompt_text, prompt_type, description)
                 flash('Prompt created successfully', 'success')
-    except Exception as e:
+    except Exception:
         flash('An error occurred while saving the prompt', 'error')
 
     return redirect(url_for('prompts.list_prompts'))
@@ -107,7 +107,7 @@ def save_prompt():
 def confirm_delete_prompt(prompt_id):
     """Handle delete confirmation form submission"""
     prompt_service = PromptService()
-    
+
     try:
         # Delete prompt with transaction management
         with db.session.begin():
@@ -116,7 +116,7 @@ def confirm_delete_prompt(prompt_id):
                 flash('Prompt deleted successfully', 'success')
             else:
                 flash('Failed to delete prompt - prompt not found or invalid ID', 'error')
-    except Exception as e:
+    except Exception:
         flash('An error occurred while deleting the prompt', 'error')
 
     return redirect(url_for('prompts.list_prompts'))

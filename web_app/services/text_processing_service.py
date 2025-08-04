@@ -33,12 +33,12 @@ class TextProcessingService:
     def clean_text_for_rag(self, raw_text: str, *, spellfix: bool = True, remove_headers: bool = True) -> str:
         """
         Clean text using Dutch genealogy-specific preprocessing
-        
+
         Args:
             raw_text: Raw input text
             spellfix: Whether to apply OCR spell correction
             remove_headers: Whether to remove page headers/footers
-            
+
         Returns:
             Cleaned text ready for chunking
         """
@@ -55,12 +55,12 @@ class TextProcessingService:
     def smart_chunk_text(self, text: str, chunk_size: int = 1000, overlap_percentage: float = 0.15) -> list[str]:
         """
         Chunk text using LangChain's RecursiveCharacterTextSplitter with generous overlap
-        
+
         Args:
             text: Cleaned text to chunk
             chunk_size: Target size for each chunk
             overlap_percentage: Overlap as percentage (0.15 = 15%)
-            
+
         Returns:
             List of text chunks with smart boundaries
         """
@@ -99,12 +99,12 @@ class TextProcessingService:
     def _fallback_chunk_text(self, text: str, chunk_size: int, overlap_percentage: float) -> list[str]:
         """
         Fallback chunking method if LangChain fails
-        
+
         Args:
             text: Text to chunk
             chunk_size: Target chunk size
             overlap_percentage: Overlap percentage
-            
+
         Returns:
             List of text chunks using simple overlap
         """
@@ -137,13 +137,13 @@ class TextProcessingService:
                               overlap_percentage: float = 0.15, spellfix: bool = True) -> dict:
         """
         Complete pipeline: clean text and create smart chunks
-        
+
         Args:
             raw_content: Raw corpus text
             chunk_size: Target chunk size
             overlap_percentage: Overlap percentage (0.15 = 15%)
             spellfix: Whether to apply spell correction
-            
+
         Returns:
             Dict with cleaned_text, chunks, and processing stats
         """
@@ -184,10 +184,10 @@ class TextProcessingService:
     def generate_daitch_mokotoff_codes(self, text: str) -> list[str]:
         """
         Generate Daitch-Mokotoff Soundex codes from text for genealogy name matching
-        
+
         Args:
             text: Input text to extract names and generate soundex codes
-            
+
         Returns:
             List of unique DM soundex codes found in the text
         """
@@ -206,7 +206,7 @@ class TextProcessingService:
                 if isinstance(codes, str):
                     if codes:  # Only add non-empty codes
                         dm_codes.add(codes)
-                elif isinstance(codes, (list, tuple, set)):
+                elif isinstance(codes, list | tuple | set):
                     for code in codes:
                         if code:  # Only add non-empty codes
                             dm_codes.add(str(code))
@@ -224,13 +224,13 @@ class TextProcessingService:
                                    overlap_percentage: float = 0.20, spellfix: bool = True) -> list[dict]:
         """
         Unified corpus processing with genealogical anchoring for both RAG and extraction
-        
+
         Args:
             raw_text: Raw corpus text
             chunk_size: Target chunk size (1500 good for both RAG and extraction)
             overlap_percentage: Overlap percentage (20% for better entity continuity)
             spellfix: Whether to apply spell correction
-            
+
         Returns:
             List of enriched chunks with genealogical context
         """

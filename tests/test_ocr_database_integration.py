@@ -10,7 +10,6 @@ import pytesseract
 import pytest
 from langdetect import LangDetectException
 
-from web_app.database import db
 from web_app.database.models import OcrPage
 from web_app.pdf_processing.ocr_processor import PDFOCRProcessor
 
@@ -248,7 +247,7 @@ class TestOCRDatabaseIntegration:
         assert result['success'] is True
         mock_pdf_to_image.assert_called_once()
         mock_extract.assert_called_once()
-        
+
         # Verify data was saved to database via repository
         ocr_page = processor.ocr_repository.get_by_batch_and_filename(sample_batch_id, "001.pdf")
         assert ocr_page is not None

@@ -35,20 +35,22 @@ def app():
 class TestDatabaseInitialization:
     """Test our database initialization logic"""
 
-    @patch('web_app.services.prompt_service.prompt_service.load_default_prompts')
-    def test_init_db_loads_default_prompts(self, mock_load_prompts, app):
+    @patch('web_app.services.prompt_service.PromptService')
+    def test_init_db_loads_default_prompts(self, mock_prompt_service_class, app):
         """Test that init_db calls our prompt loading logic"""
         with app.app_context():
-            # Mock the prompt service to return a fake prompt
+            # Mock the prompt service instance and its load_default_prompts method
+            mock_prompt_service_instance = mock_prompt_service_class.return_value
             mock_prompt = MagicMock()
             mock_prompt.name = "Test Prompt"
-            mock_load_prompts.return_value = [mock_prompt]
+            mock_prompt_service_instance.load_default_prompts.return_value = [mock_prompt]
 
             # Initialize database
             init_db()
 
-            # Verify our prompt loading was called
-            mock_load_prompts.assert_called_once()
+            # Verify our prompt service was instantiated and load_default_prompts was called
+            mock_prompt_service_class.assert_called_once()
+            mock_prompt_service_instance.load_default_prompts.assert_called_once()
 
     def test_database_configuration_from_environment(self):
         """Test that database URL is configurable via environment"""

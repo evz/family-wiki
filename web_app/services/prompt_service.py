@@ -2,7 +2,6 @@
 Service for managing LLM extraction prompts
 """
 
-import uuid
 from pathlib import Path
 
 from web_app.repositories.rag_repository import RAGRepository
@@ -157,7 +156,7 @@ class PromptService:
                 # If not found as extraction type, look for any prompt with this name
                 all_prompts = self.rag_repository.get_all_prompts()
                 existing_prompt = next((p for p in all_prompts if p.name == prompt_name), None)
-                
+
             if not existing_prompt:
                 logger.error(f"Prompt not found: {prompt_name}")
                 return None
@@ -175,5 +174,3 @@ class PromptService:
             return None
 
 
-# Global service instance
-prompt_service = PromptService()

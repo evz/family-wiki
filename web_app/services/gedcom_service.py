@@ -193,5 +193,3 @@ class GedcomService:
                 "error": error_msg
             }
 
-# Global service instance
-gedcom_service = GedcomService()

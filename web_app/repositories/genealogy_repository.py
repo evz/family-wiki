@@ -2,7 +2,7 @@
 Repository for genealogy data operations - separated from business logic
 """
 
-from web_app.database.models import Event, Family, Marriage, Person, Place
+from web_app.database.models import Family, Marriage, Person
 from web_app.repositories.genealogy_base_repository import GenealogyBaseRepository
 
 
@@ -118,7 +118,7 @@ class GenealogyDataRepository(GenealogyBaseRepository):
         """Create Person object from extracted data"""
         # Parse name components first
         given_names, tussenvoegsel, surname = self._parse_dutch_name(person_data)
-        
+
         # Prepare data for base class
         person_common_data = {
             'given_names': given_names,
@@ -132,7 +132,7 @@ class GenealogyDataRepository(GenealogyBaseRepository):
             'death_place': person_data.get('death_place', ''),
             'notes': person_data.get('notes', '')
         }
-        
+
         # Use base class to create person with common fields
         person = self.create_basic_person(person_common_data)
 

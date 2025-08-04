@@ -27,7 +27,7 @@ class PDFOCRProcessor:
     def __init__(self, output_dir: str = "extracted_text"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
-        
+
         # Repository for database operations
         self.ocr_repository = OcrRepository()
 
