@@ -7,8 +7,11 @@ from uuid import uuid4
 import pytest
 import requests
 import requests_mock
+from celery.exceptions import Retry
 
 from web_app.tasks.rag_tasks import CorpusProcessingManager, process_corpus
+from web_app.repositories.rag_repository import RAGRepository
+from tests.test_utils import MockTaskProgressRepository
 
 
 class TestCorpusProcessingManager:
@@ -34,11 +37,15 @@ class TestCorpusProcessingManager:
     @pytest.fixture
     def manager(self, sample_corpus_id):
         """Create a corpus processing manager instance"""
-        return CorpusProcessingManager(sample_corpus_id)
+        manager = CorpusProcessingManager(sample_corpus_id)
+        # Override with mock for testing
+        manager.progress = MockTaskProgressRepository(sample_corpus_id)
+        return manager
 
     def test_manager_initialization(self, sample_corpus_id):
         """Test manager initialization"""
         manager = CorpusProcessingManager(sample_corpus_id)
+        manager.progress = MockTaskProgressRepository(sample_corpus_id)
         assert manager.corpus_id == sample_corpus_id
         assert manager.corpus is None
         assert manager.rag_service is not None
@@ -142,9 +149,8 @@ class TestCorpusProcessingManager:
 
             assert "Failed to start pull" in str(exc_info.value)
 
-    @patch('web_app.tasks.rag_tasks.current_task')
     @patch.object(CorpusProcessingManager, '_is_model_available')
-    def test_ensure_embedding_model_available_already_exists(self, mock_is_available, mock_task, manager, mock_corpus):
+    def test_ensure_embedding_model_available_already_exists(self, mock_is_available, manager, mock_corpus):
         """Test ensuring model availability when model already exists"""
         manager.corpus = mock_corpus
         mock_is_available.return_value = True
@@ -153,7 +159,9 @@ class TestCorpusProcessingManager:
 
         # Should check availability and return early
         mock_is_available.assert_called_once_with('zylonai/multilingual-e5-large')
-        mock_task.update_state.assert_called()
+        # Check that progress was updated
+        assert len(manager.progress.progress_updates) == 1
+        assert manager.progress.progress_updates[0]['progress'] == 25
 
     @patch('web_app.tasks.rag_tasks.current_task')
     @patch.object(CorpusProcessingManager, '_pull_model_with_progress')
@@ -252,7 +260,7 @@ class TestCorpusProcessingManager:
         manager.rag_repository = MagicMock()
         manager.rag_repository.update_corpus_status.return_value = mock_corpus
 
-        result = manager.run_corpus_processing()
+        result = manager.run()
 
         # Check workflow sequence
         mock_load.assert_called_once()
@@ -272,7 +280,7 @@ class TestCorpusProcessingManager:
 class TestProcessCorpusTask:
     """Test the Celery task wrapper"""
 
-    @patch.object(CorpusProcessingManager, 'run_corpus_processing')
+    @patch.object(CorpusProcessingManager, 'run')
     @patch.object(CorpusProcessingManager, '__init__')
     def test_process_corpus_success(self, mock_init, mock_run):
         """Test successful corpus processing task"""
@@ -284,41 +292,62 @@ class TestProcessCorpusTask:
         assert result['success'] is True
         assert result['chunks_stored'] == 42
 
-    @patch.object(CorpusProcessingManager, 'run_corpus_processing')
-    @patch.object(CorpusProcessingManager, 'handle_processing_error')
-    @patch.object(CorpusProcessingManager, '__init__')
-    def test_process_corpus_value_error(self, mock_init, mock_handle_error, mock_run):
-        """Test corpus processing task with ValueError"""
-        mock_init.return_value = None
-        mock_run.side_effect = ValueError("Invalid corpus data")
 
-        with pytest.raises(ValueError):
-            process_corpus('test-corpus-id')
-
-        mock_handle_error.assert_called_once()
-
-    @patch.object(CorpusProcessingManager, 'run_corpus_processing')
-    @patch.object(CorpusProcessingManager, 'handle_processing_error')
-    @patch.object(CorpusProcessingManager, '__init__')
-    def test_process_corpus_connection_error(self, mock_init, mock_handle_error, mock_run):
+    def test_process_corpus_connection_error(self, app, db):
         """Test corpus processing task with ConnectionError"""
-        mock_init.return_value = None
-        mock_run.side_effect = ConnectionError("Cannot connect to Ollama")
+        with app.app_context():
+            # Create a real corpus first using RAG service like other tests
+            from web_app.services.rag_service import RAGService
+            rag_service = RAGService()
+            
+            # Create a test corpus with valid data
+            corpus = rag_service.create_corpus(
+                name="Test Corpus for Connection Error",
+                description="Test corpus for connection error testing"
+            )
+            # Add raw content for processing
+            corpus.raw_content = "Test content for connection error testing"
+            db.session.flush()
+            
+            # Mock the Ollama connection to fail
+            with patch('web_app.tasks.rag_tasks.requests.get') as mock_get:
+                mock_get.side_effect = ConnectionError("Cannot connect to Ollama")
+                
+                # Call apply() to execute the task synchronously for testing
+                result = process_corpus.apply(args=(str(corpus.id),))
+                
+                # ConnectionError should be retried, then eventually fail
+                assert not result.successful()
 
-        with pytest.raises(ConnectionError):
-            process_corpus('test-corpus-id')
-
-        mock_handle_error.assert_called_once()
-
-    @patch.object(CorpusProcessingManager, 'run_corpus_processing')
-    @patch.object(CorpusProcessingManager, 'handle_processing_error')
-    @patch.object(CorpusProcessingManager, '__init__')
-    def test_process_corpus_unexpected_error(self, mock_init, mock_handle_error, mock_run):
+    def test_process_corpus_unexpected_error(self, app, db):
         """Test corpus processing task with unexpected error"""
-        mock_init.return_value = None
-        mock_run.side_effect = Exception("Unexpected error")
-
-        with pytest.raises(Exception):
-            process_corpus('test-corpus-id')
-
-        mock_handle_error.assert_called_once()
+        with app.app_context():
+            # Create a real corpus first using RAG service like other tests
+            from web_app.services.rag_service import RAGService
+            rag_service = RAGService()
+            
+            # Create a test corpus with valid data
+            corpus = rag_service.create_corpus(
+                name="Test Corpus for Unexpected Error",
+                description="Test corpus for unexpected error testing"
+            )
+            # Add raw content for processing
+            corpus.raw_content = "Test content for unexpected error testing"
+            db.session.flush()
+            
+            # Mock the model availability check to pass, then fail during processing
+            with patch('web_app.tasks.rag_tasks.requests.get') as mock_get:
+                mock_get.return_value.status_code = 200
+                mock_get.return_value.json.return_value = {'models': [{'name': corpus.embedding_model}]}
+                
+                # Mock the RAG service to fail unexpectedly during text processing
+                with patch('web_app.services.rag_service.RAGService.store_source_text') as mock_store:
+                    mock_store.side_effect = Exception("Unexpected database error")
+                    
+                    # Call apply() to execute the task synchronously for testing
+                    result = process_corpus.apply(args=(str(corpus.id),))
+                    
+                    # Verify task failed with the expected error
+                    assert result.failed()
+                    assert isinstance(result.result, Exception)
+                    assert "Unexpected database error" in str(result.result)

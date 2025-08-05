@@ -5,22 +5,23 @@ import os
 from pathlib import Path
 
 from celery import current_task
-from celery.exceptions import Retry
 
 from web_app.pdf_processing.llm_genealogy_extractor import LLMGenealogyExtractor
 from web_app.repositories.genealogy_repository import GenealogyDataRepository
 from web_app.services.prompt_service import PromptService
 from web_app.shared.logging_config import get_project_logger
+from web_app.tasks.base_task import BaseTaskManager, BaseFileProcessingTask
 from web_app.tasks.celery_app import celery
 
 
 logger = get_project_logger(__name__)
 
 
-class ExtractionTaskManager:
+class ExtractionTaskManager(BaseTaskManager):
     """Manages the extraction workflow with proper error handling"""
 
-    def __init__(self, text_file: str = None):
+    def __init__(self, task_id: str, text_file: str = None):
+        super().__init__(task_id)
         self.text_file = self._get_text_file_path(text_file)
         self.extractor = None
         self.chunks = []
@@ -178,25 +179,18 @@ class ExtractionTaskManager:
             raise
 
 
-    def run_extraction(self):
+    def run(self):
         """Run the complete extraction workflow"""
         # Initialize
-        current_task.update_state(
-            state='RUNNING',
-            meta={'status': 'initializing', 'progress': 0}
-        )
+        self.update_progress('initializing', 0)
 
         self.extractor = self._create_extractor()
         self._load_and_split_text()
 
-        current_task.update_state(
-            state='RUNNING',
-            meta={
-                'status': 'processing',
-                'progress': 5,
-                'total_chunks': len(self.chunks),
-                'current_chunk': 0
-            }
+        self.update_progress(
+            'processing', 5,
+            total_chunks=len(self.chunks),
+            current_chunk=0
         )
 
         # Get active prompt once
@@ -209,14 +203,10 @@ class ExtractionTaskManager:
 
             logger.info(f"Processing chunk {current_chunk}/{len(self.chunks)}")
 
-            current_task.update_state(
-                state='RUNNING',
-                meta={
-                    'status': 'processing',
-                    'progress': progress,
-                    'total_chunks': len(self.chunks),
-                    'current_chunk': current_chunk
-                }
+            self.update_progress(
+                'processing', progress,
+                total_chunks=len(self.chunks),
+                current_chunk=current_chunk
             )
 
             chunk_data = self._process_chunk(i, chunk, active_prompt)
@@ -224,14 +214,10 @@ class ExtractionTaskManager:
             self.all_isolated_individuals.extend(chunk_data.get("isolated_individuals", []))
 
         # Save to database
-        current_task.update_state(
-            state='RUNNING',
-            meta={
-                'status': 'saving',
-                'progress': 95,
-                'total_chunks': len(self.chunks),
-                'current_chunk': len(self.chunks)
-            }
+        self.update_progress(
+            'saving', 95,
+            total_chunks=len(self.chunks),
+            current_chunk=len(self.chunks)
         )
 
         save_result = self._save_to_database()
@@ -274,7 +260,8 @@ class ExtractionTaskManager:
         return total_people
 
 
-@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=BaseFileProcessingTask.autoretry_for, 
+             retry_kwargs=BaseFileProcessingTask.retry_kwargs)
 def extract_genealogy_data(self, text_file: str = None):
     """
     Extract genealogy data from text using LLM
@@ -285,33 +272,7 @@ def extract_genealogy_data(self, text_file: str = None):
     Returns:
         dict: Extraction results with summary statistics
     """
-    task_manager = ExtractionTaskManager(text_file)
-
-    try:
-        result = task_manager.run_extraction()
-        logger.info(f"Extraction completed successfully: {result}")
-        return result
-
-    except FileNotFoundError as e:
-        logger.error(f"File not found: {e}")
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'File not found: {str(e)}'}
-        )
-        raise
-
-    except ConnectionError as e:
-        logger.error(f"Connection error (will retry): {e}")
-        current_task.update_state(
-            state='RETRY',
-            meta={'status': 'retrying', 'error': f'Connection error: {str(e)}'}
-        )
-        raise Retry(f"Connection error: {e}") from e
-
-    except Exception as e:
-        logger.error(f"Unexpected error during extraction: {e}", exc_info=True)
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'Unexpected error: {str(e)}'}
-        )
-        raise
+    task_handler = BaseFileProcessingTask()
+    task_manager = ExtractionTaskManager(self.request.id, text_file)
+    
+    return task_handler.execute_with_error_handling(task_manager.run)

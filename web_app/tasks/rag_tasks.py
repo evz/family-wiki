@@ -13,16 +13,18 @@ from web_app.repositories.rag_repository import RAGRepository
 from web_app.services.rag_service import RAGService
 from web_app.services.text_processing_service import TextProcessingService
 from web_app.shared.logging_config import get_project_logger
+from web_app.tasks.base_task import BaseTaskManager, BaseFileProcessingTask
 from web_app.tasks.celery_app import celery
 
 
 logger = get_project_logger(__name__)
 
 
-class CorpusProcessingManager:
+class CorpusProcessingManager(BaseTaskManager):
     """Manages corpus processing workflow with proper error handling"""
 
     def __init__(self, corpus_id: str):
+        super().__init__(corpus_id)  # Use corpus_id as task_id
         self.corpus_id = corpus_id
         self.corpus = None
         self.rag_service = RAGService()
@@ -135,10 +137,7 @@ class CorpusProcessingManager:
             logger.warning("No embedding model specified for corpus")
             return
 
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': f'Checking availability of embedding model: {self.corpus.embedding_model}...', 'progress': 25}
-        )
+        self.update_progress(f'Checking availability of embedding model: {self.corpus.embedding_model}...', 25)
 
         # Check if model is already available
         if self._is_model_available(self.corpus.embedding_model):
@@ -146,10 +145,7 @@ class CorpusProcessingManager:
             return
 
         # Model not available, need to pull it
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': f'Downloading embedding model: {self.corpus.embedding_model}...', 'progress': 30}
-        )
+        self.update_progress(f'Downloading embedding model: {self.corpus.embedding_model}...', 30)
 
         try:
             self._pull_model_with_progress(self.corpus.embedding_model)
@@ -172,13 +168,8 @@ class CorpusProcessingManager:
 
         logger.error(f"Corpus processing error: {error_msg}")
 
-        # Update task state
-        current_task.update_state(
-            state='FAILURE',
-            meta={'error': error_msg}
-        )
-
         # Try to update corpus status in database
+        # Note: Task state updates are handled by BaseFileProcessingTask.handle_task_error()
         try:
             self.rag_repository.update_corpus_status(self.corpus_id, 'failed', error_msg)
             if self.corpus:
@@ -189,10 +180,7 @@ class CorpusProcessingManager:
 
     def _process_text_content(self) -> int:
         """Process the raw text content and create embeddings"""
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Generating text chunks and embeddings...', 'progress': 40}
-        )
+        self.update_progress('Generating text chunks and embeddings...', 40)
 
         # Use corpus name as filename for source text
         filename = f"{self.corpus.name}.txt"
@@ -207,45 +195,42 @@ class CorpusProcessingManager:
         logger.info(f"Processed {stored_chunks} chunks for corpus {self.corpus.name}")
         return stored_chunks
 
-    def run_corpus_processing(self) -> dict:
+    def run(self) -> dict:
         """Execute the complete corpus processing workflow"""
-        # Load corpus and validate
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Loading corpus from database...', 'progress': 10}
-        )
-        self._load_corpus()
+        try:
+            # Load corpus and validate
+            self.update_progress('Loading corpus from database...', 10)
+            self._load_corpus()
 
-        # Set status to processing
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Starting text processing...', 'progress': 20}
-        )
-        self._update_corpus_status('processing')
+            # Set status to processing
+            self.update_progress('Starting text processing...', 20)
+            self._update_corpus_status('processing')
 
-        # Ensure embedding model is available
-        self._ensure_embedding_model_available()
+            # Ensure embedding model is available
+            self._ensure_embedding_model_available()
 
-        # Process the text content
-        stored_chunks = self._process_text_content()
+            # Process the text content
+            stored_chunks = self._process_text_content()
 
-        # Mark as completed
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Finalizing corpus preparation...', 'progress': 90}
-        )
-        self._update_corpus_status('completed')
+            # Mark as completed
+            self.update_progress('Finalizing corpus preparation...', 90)
+            self._update_corpus_status('completed')
 
-        return {
-            'success': True,
-            'corpus_id': self.corpus_id,
-            'corpus_name': self.corpus.name,
-            'chunks_stored': stored_chunks,
-            'message': f'Successfully processed "{self.corpus.name}" - {stored_chunks} text chunks created'
-        }
+            return {
+                'success': True,
+                'corpus_id': self.corpus_id,
+                'corpus_name': self.corpus.name,
+                'chunks_stored': stored_chunks,
+                'message': f'Successfully processed "{self.corpus.name}" - {stored_chunks} text chunks created'
+            }
+        except Exception as e:
+            # Handle corpus-specific error state management
+            self.handle_processing_error(e, "Corpus processing failed")
+            raise  # Re-raise for BaseFileProcessingTask to handle
 
 
-@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=BaseFileProcessingTask.autoretry_for, 
+             retry_kwargs=BaseFileProcessingTask.retry_kwargs)
 def process_corpus(self, corpus_id: str):
     """
     Process corpus text content and create embeddings
@@ -256,24 +241,10 @@ def process_corpus(self, corpus_id: str):
     Returns:
         dict: Processing results with success status and statistics
     """
+    task_handler = BaseFileProcessingTask()
     task_manager = CorpusProcessingManager(corpus_id)
-
-    try:
-        result = task_manager.run_corpus_processing()
-        logger.info(f"Corpus processing completed successfully: {result}")
-        return result
-
-    except ValueError as e:
-        task_manager.handle_processing_error(e, "Invalid corpus data")
-        raise
-
-    except ConnectionError as e:
-        task_manager.handle_processing_error(e, "Connection error")
-        raise
-
-    except Exception as e:
-        task_manager.handle_processing_error(e, "Unexpected error")
-        raise
+    
+    return task_handler.execute_with_error_handling(task_manager.run)
 
 
 @celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 2, 'countdown': 30})
@@ -436,7 +407,8 @@ def finalize_corpus(self, chunk_results: list, corpus_id: str):
         raise
 
 
-@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=BaseFileProcessingTask.autoretry_for, 
+             retry_kwargs=BaseFileProcessingTask.retry_kwargs)
 def process_corpus_parallel(self, corpus_id: str):
     """
     Process corpus text content with parallel chunk processing
@@ -447,37 +419,28 @@ def process_corpus_parallel(self, corpus_id: str):
     Returns:
         dict: Processing results with success status and statistics
     """
-    try:
+    def _parallel_processing_workflow():
         # Initialize manager but don't run the full sequential processing
         task_manager = CorpusProcessingManager(corpus_id)
 
         # Load corpus and validate
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Loading corpus from database...', 'progress': 10}
-        )
+        task_manager.update_progress('Loading corpus from database...', 10)
         task_manager._load_corpus()
 
         # Set status to processing
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Starting parallel text processing...', 'progress': 20}
-        )
+        task_manager.update_progress('Starting parallel text processing...', 20)
         task_manager._update_corpus_status('processing')
 
         # Ensure embedding model is available
         task_manager._ensure_embedding_model_available()
 
         # Prepare text chunks for parallel processing
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': 'Preparing text chunks for parallel processing...', 'progress': 40}
-        )
+        task_manager.update_progress('Preparing text chunks for parallel processing...', 40)
 
         # Use corpus name as filename for source text
         filename = f"{task_manager.corpus.name}.txt"
 
-        # Clean the text before processing (disable spell correction for genealogy names)
+        # Clean the text before processing
         cleaned_content = task_manager.rag_service.text_processor.clean_text_for_rag(
             task_manager.corpus.raw_content, spellfix=False
         )
@@ -486,7 +449,7 @@ def process_corpus_parallel(self, corpus_id: str):
         content_hash = hashlib.sha256(cleaned_content.encode()).hexdigest()
 
         # Create chunks using the text processor
-        overlap_percentage = 0.15  # 15% overlap for better context preservation
+        overlap_percentage = 0.15
         chunks = task_manager.rag_service.text_processor.smart_chunk_text(
             text=cleaned_content,
             chunk_size=task_manager.corpus.chunk_size,
@@ -498,22 +461,16 @@ def process_corpus_parallel(self, corpus_id: str):
         if not chunks:
             raise ValueError("No text chunks created from corpus content")
 
-        # Create individual chunk processing tasks
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': f'Creating {len(chunks)} parallel chunk processing tasks...', 'progress': 50}
-        )
-
         # Create the group of chunk processing tasks
         chunk_tasks = []
         for i, chunk in enumerate(chunks):
-            if chunk.strip():  # Only process non-empty chunks
+            if chunk.strip():
                 chunk_task = process_chunk.s(
                     corpus_id=corpus_id,
                     chunk_text=chunk,
                     chunk_number=i,
                     filename=filename,
-                    page_number=None,  # Single corpus, no specific page
+                    page_number=None,
                     content_hash=content_hash
                 )
                 chunk_tasks.append(chunk_task)
@@ -521,18 +478,10 @@ def process_corpus_parallel(self, corpus_id: str):
         if not chunk_tasks:
             raise ValueError("No valid chunks to process")
 
-        logger.info(f"Starting {len(chunk_tasks)} parallel chunk processing tasks for corpus {task_manager.corpus.name}")
-
-        # Use Celery chord: run all chunk tasks in parallel, then finalize when complete
-        current_task.update_state(
-            state='PROGRESS',
-            meta={'status': f'Starting parallel processing of {len(chunk_tasks)} chunks...', 'progress': 60}
-        )
-
-        # Create the chord: group of parallel tasks followed by callback
+        # Use Celery chord for parallel processing
+        task_manager.update_progress(f'Starting parallel processing of {len(chunk_tasks)} chunks...', 60)
         job = chord(chunk_tasks)(finalize_corpus.s(corpus_id))
 
-        # Return the job info - the actual processing continues asynchronously
         return {
             'success': True,
             'corpus_id': corpus_id,
@@ -542,18 +491,6 @@ def process_corpus_parallel(self, corpus_id: str):
             'chord_job_id': job.id,
             'message': f'Started parallel processing of "{task_manager.corpus.name}" with {len(chunk_tasks)} chunks'
         }
-
-    except ValueError as e:
-        if 'task_manager' in locals():
-            task_manager.handle_processing_error(e, "Invalid corpus data")
-        raise
-
-    except ConnectionError as e:
-        if 'task_manager' in locals():
-            task_manager.handle_processing_error(e, "Connection error")
-        raise
-
-    except Exception as e:
-        if 'task_manager' in locals():
-            task_manager.handle_processing_error(e, "Unexpected error in parallel processing")
-        raise
+    
+    task_handler = BaseFileProcessingTask()
+    return task_handler.execute_with_error_handling(_parallel_processing_workflow)

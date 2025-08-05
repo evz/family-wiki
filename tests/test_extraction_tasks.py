@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from web_app.tasks.extraction_tasks import ExtractionTaskManager, extract_genealogy_data
+from tests.test_utils import MockTaskProgressRepository
 
 
 class TestExtractionTaskManager:
@@ -80,7 +81,7 @@ class TestExtractionTaskManager:
     def test_init_default_text_file(self):
         """Test task manager initialization with default text file"""
         with patch.object(Path, 'exists', return_value=True):
-            manager = ExtractionTaskManager()
+            manager = ExtractionTaskManager('test-task-id')
             assert str(manager.text_file) == "web_app/pdf_processing/extracted_text/consolidated_text.txt"
             assert manager.extractor is None
             assert manager.chunks == []
@@ -89,17 +90,17 @@ class TestExtractionTaskManager:
 
     def test_init_custom_text_file(self, temp_text_file):
         """Test task manager initialization with custom text file"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         assert str(manager.text_file) == temp_text_file
 
     def test_init_missing_text_file(self):
         """Test task manager initialization with missing text file"""
         with pytest.raises(FileNotFoundError, match="Text file not found"):
-            ExtractionTaskManager("/non/existent/file.txt")
+            ExtractionTaskManager('test-task-id', "/non/existent/file.txt")
 
     def test_get_text_file_path_exists(self, temp_text_file):
         """Test getting text file path when file exists"""
-        manager = ExtractionTaskManager()
+        manager = ExtractionTaskManager('test-task-id')
         result = manager._get_text_file_path(temp_text_file)
         assert result == Path(temp_text_file)
 
@@ -119,7 +120,7 @@ class TestExtractionTaskManager:
                 del os.environ[key]
 
         try:
-            manager = ExtractionTaskManager(temp_text_file)
+            manager = ExtractionTaskManager('test-task-id', temp_text_file)
             manager._create_extractor()
 
             mock_extractor_class.assert_called_once_with(
@@ -141,7 +142,7 @@ class TestExtractionTaskManager:
         os.environ['OLLAMA_MODEL'] = 'llama2'
 
         try:
-            manager = ExtractionTaskManager(temp_text_file)
+            manager = ExtractionTaskManager('test-task-id', temp_text_file)
             manager._create_extractor()
 
             mock_extractor_class.assert_called_once_with(
@@ -178,7 +179,7 @@ class TestExtractionTaskManager:
         ]
         mock_text_processor.process_corpus_with_anchors.return_value = mock_enriched_chunks
 
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.extractor = mock_extractor
 
         manager._load_and_split_text()
@@ -189,7 +190,7 @@ class TestExtractionTaskManager:
 
     def test_load_and_split_text_file_error(self, temp_text_file, mock_extractor, mock_logger):
         """Test text loading with file error"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.extractor = mock_extractor
 
         with patch('builtins.open', side_effect=OSError("File error")):
@@ -200,7 +201,7 @@ class TestExtractionTaskManager:
 
     def test_load_and_split_text_unicode_error(self, temp_text_file, mock_extractor, mock_logger):
         """Test text loading with unicode error"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.extractor = mock_extractor
 
         with patch('builtins.open', side_effect=UnicodeDecodeError('utf-8', b'', 0, 1, 'invalid')):
@@ -211,7 +212,7 @@ class TestExtractionTaskManager:
 
     def test_get_active_prompt_success(self, temp_text_file, mock_prompt_service):
         """Test getting active prompt successfully"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         mock_prompt = Mock()
         mock_prompt.prompt_text = "Test prompt"
         mock_service = Mock()
@@ -226,7 +227,7 @@ class TestExtractionTaskManager:
 
     def test_get_active_prompt_failure(self, temp_text_file, mock_prompt_service, mock_logger):
         """Test getting active prompt with failure"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         mock_service = Mock()
         mock_service.get_active_prompt.side_effect = Exception("Database error")
         mock_prompt_service.return_value = mock_service
@@ -238,7 +239,7 @@ class TestExtractionTaskManager:
 
     def test_process_chunk_with_custom_prompt(self, temp_text_file, mock_extractor):
         """Test processing chunk with custom prompt"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.extractor = mock_extractor
 
         # Set up enriched chunks to simulate unified processor output
@@ -278,7 +279,7 @@ class TestExtractionTaskManager:
 
     def test_process_chunk_without_custom_prompt(self, temp_text_file, mock_extractor):
         """Test processing chunk without custom prompt"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.extractor = mock_extractor
 
         # Set up enriched chunks without genealogical context
@@ -301,7 +302,7 @@ class TestExtractionTaskManager:
 
     def test_process_chunk_exception(self, temp_text_file, mock_extractor, mock_logger):
         """Test processing chunk with exception"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.extractor = mock_extractor
         mock_extractor.extract_from_chunk.side_effect = Exception("Extraction failed")
 
@@ -312,7 +313,7 @@ class TestExtractionTaskManager:
 
     def test_add_chunk_metadata_families(self, temp_text_file):
         """Test adding chunk metadata to families"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
 
         chunk_data = {
             "families": [{
@@ -344,7 +345,7 @@ class TestExtractionTaskManager:
 
     def test_add_chunk_metadata_empty_parents(self, temp_text_file):
         """Test adding chunk metadata with empty parents"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
 
         chunk_data = {
             "families": [{
@@ -367,7 +368,7 @@ class TestExtractionTaskManager:
 
     def test_save_to_database_success(self, temp_text_file, mock_repository):
         """Test successful database save"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.all_families = [{"family_id": "F001"}]
         manager.all_isolated_individuals = [{"name": "John"}]
 
@@ -385,7 +386,7 @@ class TestExtractionTaskManager:
 
     def test_save_to_database_failure(self, temp_text_file, mock_repository, mock_logger):
         """Test database save failure"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         mock_repository.save_extraction_data.side_effect = Exception("Database error")
 
         with pytest.raises(Exception, match="Database error"):
@@ -395,7 +396,7 @@ class TestExtractionTaskManager:
 
     def test_count_total_people(self, temp_text_file):
         """Test counting total people"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.all_families = [
             {
                 "parents": {"father": {"name": "John"}, "mother": {"name": "Jane"}},
@@ -415,7 +416,7 @@ class TestExtractionTaskManager:
 
     def test_calculate_summary(self, temp_text_file):
         """Test calculating extraction summary"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.all_families = [
             {
                 "parents": {"father": {"name": "John"}, "mother": {"name": "Jane"}},
@@ -440,7 +441,7 @@ class TestExtractionTaskManager:
 
     def test_calculate_summary_no_families(self, temp_text_file):
         """Test calculating summary with no families"""
-        manager = ExtractionTaskManager(temp_text_file)
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
         manager.all_families = []
         manager.all_isolated_individuals = [{"name": "William"}]
 
@@ -452,7 +453,7 @@ class TestExtractionTaskManager:
 
 
 class TestExtractionTaskManagerIntegration:
-    """Integration tests for ExtractionTaskManager.run_extraction()"""
+    """Integration tests for ExtractionTaskManager.run()"""
 
     @pytest.fixture
     def temp_text_file(self):
@@ -508,7 +509,7 @@ class TestExtractionTaskManagerIntegration:
             yield mock
 
     @patch('web_app.services.text_processing_service.TextProcessingService')
-    def test_run_extraction_success(self, mock_text_processor_class, temp_text_file, mock_extractor,
+    def test_run_success(self, mock_text_processor_class, temp_text_file, mock_extractor,
                                    mock_prompt_service, mock_repository, mock_current_task, mock_logger):
         """Test successful complete extraction workflow with unified processor"""
         # Mock the text processor
@@ -547,8 +548,10 @@ class TestExtractionTaskManagerIntegration:
         }
 
         # Run extraction
-        manager = ExtractionTaskManager(temp_text_file)
-        result = manager.run_extraction()
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
+        # Override with mock for testing
+        manager.progress = MockTaskProgressRepository('test-task-id')
+        result = manager.run()
 
         # Verify results
         assert result['success'] is True
@@ -558,18 +561,18 @@ class TestExtractionTaskManagerIntegration:
         assert result['people_created'] == 4
         assert result['places_created'] == 1
 
-        # Verify progress updates
-        update_calls = mock_current_task.update_state.call_args_list
-        assert len(update_calls) >= 4  # initializing, processing, saving, etc.
+        # Verify progress updates were made (using MockTaskProgressRepository)
+        progress_updates = manager.progress.progress_updates
+        assert len(progress_updates) >= 4  # initializing, processing, saving, etc.
 
         # Check specific progress states
-        states = [call[1]['meta']['status'] for call in update_calls]
+        states = [update['status'] for update in progress_updates]
         assert 'initializing' in states
         assert 'processing' in states
         assert 'saving' in states
 
     @patch('web_app.services.text_processing_service.TextProcessingService')
-    def test_run_extraction_with_custom_prompt(self, mock_text_processor_class, temp_text_file, mock_extractor,
+    def test_run_with_custom_prompt(self, mock_text_processor_class, temp_text_file, mock_extractor,
                                               mock_prompt_service, mock_repository, mock_current_task, mock_logger):
         """Test extraction with custom prompt"""
         # Mock the text processor
@@ -605,8 +608,10 @@ class TestExtractionTaskManagerIntegration:
         }
 
         # Run extraction
-        manager = ExtractionTaskManager(temp_text_file)
-        result = manager.run_extraction()
+        manager = ExtractionTaskManager('test-task-id', temp_text_file)
+        # Override with mock for testing
+        manager.progress = MockTaskProgressRepository('test-task-id')
+        result = manager.run()
 
         # Verify custom prompt was used
         mock_extractor.extract_from_chunk.assert_called_with("chunk1", custom_prompt="Custom prompt")
@@ -658,7 +663,7 @@ class TestExtractGenealogyDataTask:
             'total_isolated_individuals': 1,
             'total_people': 5
         }
-        mock_task_manager.run_extraction.return_value = expected_result
+        mock_task_manager.run.return_value = expected_result
 
         # Call the task using pytest-celery approach
         result = extract_genealogy_data.apply(args=(temp_text_file,))
@@ -669,20 +674,20 @@ class TestExtractGenealogyDataTask:
         assert result_data == expected_result
 
         # Verify task manager was called correctly
-        mock_task_manager.run_extraction.assert_called_once()
-        mock_logger.info.assert_called_once()
+        mock_task_manager.run.assert_called_once()
+        # Logger calls are now handled by BaseFileProcessingTask
 
     def test_extract_genealogy_data_default_file(self, mock_task_manager, mock_current_task, mock_logger):
         """Test extraction with default text file"""
         expected_result = {'success': True, 'total_people': 0}
-        mock_task_manager.run_extraction.return_value = expected_result
+        mock_task_manager.run.return_value = expected_result
 
         # Mock the default file exists
         with patch.object(Path, 'exists', return_value=True):
             result = extract_genealogy_data.apply(args=(None,))
 
         assert result.successful()
-        mock_task_manager.run_extraction.assert_called_once()
+        mock_task_manager.run.assert_called_once()
 
     def test_extract_genealogy_data_file_not_found(self, mock_task_manager_class, mock_current_task, mock_logger):
         """Test extraction with file not found error (should not retry)"""
@@ -697,26 +702,27 @@ class TestExtractGenealogyDataTask:
         # FileNotFoundError should not be retried, so it should fail with the original exception
         assert "File not found" in str(result.result)
 
-    def test_extract_genealogy_data_connection_error(self, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
+    @patch('web_app.tasks.base_task.current_task')
+    def test_extract_genealogy_data_connection_error(self, mock_base_current_task, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
         """Test extraction with connection error (should retry)"""
-        mock_task_manager.run_extraction.side_effect = ConnectionError("Connection failed")
+        mock_task_manager.run.side_effect = ConnectionError("Connection failed")
 
         # Call the task
         result = extract_genealogy_data.apply(args=(temp_text_file,))
 
         # ConnectionError should be retried, but after max retries it should eventually fail
         assert not result.successful()
-        mock_logger.error.assert_called()
-        mock_current_task.update_state.assert_called()
+        # Error logging is now handled by BaseFileProcessingTask
+        mock_base_current_task.update_state.assert_called()
 
         # Verify the retry behavior was triggered
-        retry_calls = [call for call in mock_current_task.update_state.call_args_list
+        retry_calls = [call for call in mock_base_current_task.update_state.call_args_list
                       if call[1]['state'] == 'RETRY']
         assert len(retry_calls) >= 1
 
     def test_extract_genealogy_data_io_error(self, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
         """Test extraction with IO error (should retry)"""
-        mock_task_manager.run_extraction.side_effect = OSError("IO error")
+        mock_task_manager.run.side_effect = OSError("IO error")
 
         # Call the task
         result = extract_genealogy_data.apply(args=(temp_text_file,))
@@ -726,9 +732,10 @@ class TestExtractGenealogyDataTask:
         # Just verify it contains the error message
         assert "IO error" in str(result.result)
 
-    def test_extract_genealogy_data_unexpected_error(self, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
+    @patch('web_app.tasks.base_task.current_task')
+    def test_extract_genealogy_data_unexpected_error(self, mock_base_current_task, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
         """Test extraction with unexpected error"""
-        mock_task_manager.run_extraction.side_effect = RuntimeError("Unexpected error")
+        mock_task_manager.run.side_effect = RuntimeError("Unexpected error")
 
         # Call the task
         result = extract_genealogy_data.apply(args=(temp_text_file,))
@@ -737,23 +744,22 @@ class TestExtractGenealogyDataTask:
         assert result.failed()
         assert isinstance(result.result, RuntimeError)
 
-        # Verify error handling
-        mock_logger.error.assert_called_once()
-        mock_current_task.update_state.assert_called_with(
+        # Verify error handling - now handled by BaseFileProcessingTask
+        mock_base_current_task.update_state.assert_called_with(
             state='FAILURE',
-            meta={'status': 'failed', 'error': 'Unexpected error: Unexpected error'}
+            meta={'status': 'failed', 'error': 'Runtime error: Unexpected error'}
         )
 
     def test_extract_genealogy_data_progress_updates(self, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
         """Test that progress updates are called during extraction"""
-        # Mock the run_extraction to simulate progress updates
-        def mock_run_extraction():
+        # Mock the run to simulate progress updates
+        def mock_run():
             mock_current_task.update_state(state='RUNNING', meta={'status': 'initializing', 'progress': 0})
             mock_current_task.update_state(state='RUNNING', meta={'status': 'processing', 'progress': 50})
             mock_current_task.update_state(state='RUNNING', meta={'status': 'saving', 'progress': 95})
             return {'success': True, 'total_people': 5}
 
-        mock_task_manager.run_extraction.side_effect = mock_run_extraction
+        mock_task_manager.run.side_effect = mock_run
 
         # Call the task
         result = extract_genealogy_data.apply(args=(temp_text_file,))
@@ -761,6 +767,6 @@ class TestExtractGenealogyDataTask:
         # Verify results
         assert result.successful()
 
-        # Progress updates are called from within run_extraction (mocked above)
+        # Progress updates are called from within run (mocked above)
         assert mock_current_task.update_state.call_count >= 3
 

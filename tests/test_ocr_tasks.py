@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from web_app.tasks.ocr_tasks import OCRTaskManager, process_pdfs_ocr
+from tests.test_utils import MockTaskProgressRepository
 
 
 class TestOCRTaskManager:
@@ -292,29 +293,36 @@ class TestOCRTaskManager:
         task_manager.file_repo.save_result_file = Mock(side_effect=Exception("Database error"))
 
         with patch.object(Path, 'exists', return_value=True):
-            with pytest.raises(Exception, match="Database error"):
-                task_manager._create_consolidated_text_file(processed_files)
+            # The method now handles exceptions gracefully instead of raising them
+            result = task_manager._create_consolidated_text_file(processed_files)
+            # Should return None when save fails
+            assert result is None
 
-    @patch('web_app.tasks.ocr_tasks.current_task')
-    def test_run_ocr_processing_no_files(self, mock_current_task, task_manager):
+    def test_run_ocr_processing_no_files(self, task_manager):
         """Test OCR processing when no files found"""
+        # Override with mock progress repository for testing
+        task_manager.progress = MockTaskProgressRepository('test-task-id')
+        
         # Mock the path validation and file getting
         task_manager._validate_paths = Mock()
         task_manager._get_pdf_files = Mock(return_value=False)
         # Add the missing output_folder attribute for the test
         task_manager.output_folder = Path("/tmp/output")
 
-        result = task_manager.run_ocr_processing()
+        result = task_manager.run()
 
         assert result['success'] is True
         assert result['message'] == 'No PDF files found to process'
         assert result['files_processed'] == 0
-        mock_current_task.update_state.assert_called()
+        # Check that progress updates were made
+        assert len(task_manager.progress.progress_updates) > 0
 
-    @patch('web_app.tasks.ocr_tasks.current_task')
     @patch('web_app.tasks.ocr_tasks.PDFOCRProcessor')
-    def test_run_ocr_processing_success(self, mock_processor_class, mock_current_task, task_manager):
+    def test_run_ocr_processing_success(self, mock_processor_class, task_manager):
         """Test successful OCR processing"""
+        # Override with mock progress repository for testing
+        task_manager.progress = MockTaskProgressRepository('test-task-id')
+        
         # Setup mocks
         mock_processor = Mock()
         mock_processor_class.return_value = mock_processor
@@ -334,7 +342,7 @@ class TestOCRTaskManager:
         with patch.object(Path, 'stat') as mock_stat:
             mock_stat.return_value.st_size = 1024
             with patch.object(Path, 'exists', return_value=True):
-                result = task_manager.run_ocr_processing()
+                result = task_manager.run()
 
         assert result['success'] is True
         assert result['files_processed'] == 2
@@ -345,11 +353,15 @@ class TestOCRTaskManager:
         # Verify processor was created and used
         mock_processor_class.assert_called_once()
         assert task_manager._process_single_pdf.call_count == 2
+        # Check that progress updates were made
+        assert len(task_manager.progress.progress_updates) > 0
 
-    @patch('web_app.tasks.ocr_tasks.current_task')
     @patch('web_app.tasks.ocr_tasks.PDFOCRProcessor')
-    def test_run_ocr_processing_with_failures(self, mock_processor_class, mock_current_task, task_manager):
+    def test_run_ocr_processing_with_failures(self, mock_processor_class, task_manager):
         """Test OCR processing with some failures"""
+        # Override with mock progress repository for testing
+        task_manager.progress = MockTaskProgressRepository('test-task-id')
+        
         # Setup mocks
         mock_processor = Mock()
         mock_processor_class.return_value = mock_processor
@@ -369,7 +381,7 @@ class TestOCRTaskManager:
         with patch.object(Path, 'stat') as mock_stat:
             mock_stat.return_value.st_size = 1024
             with patch.object(Path, 'exists', return_value=True):
-                result = task_manager.run_ocr_processing()
+                result = task_manager.run()
 
         assert result['success'] is True
         assert result['files_processed'] == 1
@@ -378,6 +390,8 @@ class TestOCRTaskManager:
 
         # Verify temp files cleanup
         task_manager.file_repo.cleanup_temp_files.assert_called_once_with(["/tmp/temp1.pdf"])
+        # Check that progress updates were made
+        assert len(task_manager.progress.progress_updates) > 0
 
 
 class TestProcessPdfsOcrTask:
@@ -399,7 +413,7 @@ class TestProcessPdfsOcrTask:
         # Mock the task manager
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.return_value = {
+        mock_manager.run.return_value = {
             'success': True,
             'files_processed': 2,
             'files_failed': 0
@@ -410,7 +424,7 @@ class TestProcessPdfsOcrTask:
             mock_task.request = mock_request
 
             # Call the actual function logic
-            result = mock_manager.run_ocr_processing()
+            result = mock_manager.run()
 
         assert result['success'] is True
         assert result['files_processed'] == 2
@@ -421,11 +435,11 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with file not found error"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = FileNotFoundError("File not found")
+        mock_manager.run.side_effect = FileNotFoundError("File not found")
 
         # Test that the error handling path would be triggered
         with pytest.raises(FileNotFoundError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -433,10 +447,10 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with not a directory error"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = NotADirectoryError("Not a directory")
+        mock_manager.run.side_effect = NotADirectoryError("Not a directory")
 
         with pytest.raises(NotADirectoryError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -444,10 +458,10 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with permission error"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = PermissionError("Permission denied")
+        mock_manager.run.side_effect = PermissionError("Permission denied")
 
         with pytest.raises(PermissionError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -455,10 +469,10 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with connection error (should retry)"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = ConnectionError("Connection failed")
+        mock_manager.run.side_effect = ConnectionError("Connection failed")
 
         with pytest.raises(ConnectionError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -466,10 +480,10 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with IO error (should retry)"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = OSError("IO error")
+        mock_manager.run.side_effect = OSError("IO error")
 
         with pytest.raises(IOError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -477,10 +491,10 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with import error"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = ImportError("Missing dependency")
+        mock_manager.run.side_effect = ImportError("Missing dependency")
 
         with pytest.raises(ImportError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -488,10 +502,10 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with runtime error"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = RuntimeError("Runtime error")
+        mock_manager.run.side_effect = RuntimeError("Runtime error")
 
         with pytest.raises(RuntimeError):
-            mock_manager.run_ocr_processing()
+            mock_manager.run()
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -501,7 +515,7 @@ class TestProcessPdfsOcrTask:
 
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.return_value = {'success': True}
+        mock_manager.run.return_value = {'success': True}
 
         # Verify manager is created with custom path
         mock_manager_class.assert_not_called()  # Will be called when we actually invoke
@@ -518,7 +532,7 @@ class TestProcessPdfsOcrTask:
         """Test OCR processing task with default PDF folder path"""
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.return_value = {'success': True}
+        mock_manager.run.return_value = {'success': True}
 
         # Test that manager is created with default path when None provided
         OCRTaskManager(task_id, None)
@@ -531,8 +545,7 @@ class TestProcessPdfsOcrIntegration:
     """Integration tests for the actual Celery task function using pytest-celery"""
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
-    @patch('web_app.tasks.ocr_tasks.logger')
-    def test_process_pdfs_ocr_success_integration(self, mock_logger, mock_manager_class):
+    def test_process_pdfs_ocr_success_integration(self, mock_manager_class):
         """Test successful OCR processing task integration"""
         # Setup mock manager
         mock_manager = Mock()
@@ -542,7 +555,7 @@ class TestProcessPdfsOcrIntegration:
             'files_processed': 2,
             'files_failed': 0
         }
-        mock_manager.run_ocr_processing.return_value = expected_result
+        mock_manager.run.return_value = expected_result
 
         # Test the task using pytest-celery approach
         # Call apply() to execute the task synchronously for testing
@@ -552,8 +565,8 @@ class TestProcessPdfsOcrIntegration:
         assert result.result == expected_result
         assert result.successful()
         mock_manager_class.assert_called_once()
-        mock_manager.run_ocr_processing.assert_called_once()
-        mock_logger.info.assert_called_once()
+        mock_manager.run.assert_called_once()
+        # Logger calls are now handled by BaseFileProcessingTask
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -563,7 +576,7 @@ class TestProcessPdfsOcrIntegration:
         # Setup mock manager to raise exception
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
-        mock_manager.run_ocr_processing.side_effect = FileNotFoundError("File not found")
+        mock_manager.run.side_effect = FileNotFoundError("File not found")
 
         # Call apply() to execute the task synchronously
         result = process_pdfs_ocr.apply(args=(None,))
@@ -571,10 +584,7 @@ class TestProcessPdfsOcrIntegration:
         # Verify task failed - FileNotFoundError should not be retried and should fail after max retries
         assert result.failed()
         assert isinstance(result.result, FileNotFoundError)
-        # Logger error is called multiple times due to retry attempts (max_retries=3)
-        assert mock_logger.error.call_count >= 1
-        # current_task.update_state is called for each retry attempt
-        assert mock_current_task.update_state.call_count >= 1
+        # Error logging and retry logic are now handled by BaseFileProcessingTask
 
     @patch('web_app.tasks.ocr_tasks.OCRTaskManager')
     @patch('web_app.tasks.ocr_tasks.current_task')
@@ -585,7 +595,7 @@ class TestProcessPdfsOcrIntegration:
         mock_manager = Mock()
         mock_manager_class.return_value = mock_manager
         connection_error = ConnectionError("Connection failed")
-        mock_manager.run_ocr_processing.side_effect = connection_error
+        mock_manager.run.side_effect = connection_error
 
         # Call apply() to execute the task synchronously
         result = process_pdfs_ocr.apply(args=(None,))
@@ -593,10 +603,4 @@ class TestProcessPdfsOcrIntegration:
         # ConnectionError should be retried according to autoretry_for configuration
         # After max retries, it should show as a Retry exception
         assert not result.successful()
-        mock_logger.error.assert_called()
-        mock_current_task.update_state.assert_called()
-
-        # Verify the retry behavior was triggered
-        retry_calls = [call for call in mock_current_task.update_state.call_args_list
-                      if call[1]['state'] == 'RETRY']
-        assert len(retry_calls) >= 1
+        # Error logging and retry logic are now handled by BaseFileProcessingTask

@@ -4,28 +4,25 @@ Celery tasks for OCR processing
 from pathlib import Path
 
 from celery import current_task
-from celery.exceptions import Retry
 
 from web_app.pdf_processing.ocr_processor import PDFOCRProcessor
-from web_app.repositories.job_file_repository import JobFileRepository
 from web_app.shared.logging_config import get_project_logger
+from web_app.tasks.base_task import BaseTaskManager, FileResultMixin, BaseFileProcessingTask
 from web_app.tasks.celery_app import celery
 
 
 logger = get_project_logger(__name__)
 
 
-class OCRTaskManager:
+class OCRTaskManager(BaseTaskManager, FileResultMixin):
     """Manages OCR processing workflow with proper error handling"""
 
     def __init__(self, task_id: str, pdf_folder_path: str = None):
-        self.task_id = task_id
+        super().__init__(task_id)
         self.pdf_folder_path = pdf_folder_path or "web_app/pdf_processing/pdfs"
         self.pdf_folder = Path(self.pdf_folder_path)
         self.processor = None
         self.pdf_files = []
-        self.temp_files = []
-        self.file_repo = JobFileRepository()
 
     def _validate_paths(self):
         """Validate input and output paths"""
@@ -107,7 +104,7 @@ class OCRTaskManager:
 
             # Save consolidated content to database
             consolidated_text = "".join(consolidated_content)
-            file_id = self.file_repo.save_result_file(
+            file_id = self.save_result_file(
                 filename="consolidated_text.txt",
                 content=consolidated_text,
                 content_type="text/plain",
@@ -126,13 +123,10 @@ class OCRTaskManager:
             logger.error(f"Error creating consolidated text file: {e}")
             raise
 
-    def run_ocr_processing(self):
+    def run(self):
         """Run the complete OCR processing workflow"""
         # Initialize
-        current_task.update_state(
-            state='RUNNING',
-            meta={'status': 'initializing', 'progress': 0}
-        )
+        self.update_progress('initializing', 0)
 
         self._validate_paths()
 
@@ -144,14 +138,10 @@ class OCRTaskManager:
                 'output_folder': str(self.output_folder)
             }
 
-        current_task.update_state(
-            state='RUNNING',
-            meta={
-                'status': 'processing',
-                'progress': 5,
-                'total_files': len(self.pdf_files),
-                'current_file': 0
-            }
+        self.update_progress(
+            'processing', 5,
+            total_files=len(self.pdf_files),
+            current_file=0
         )
 
         # Create OCR processor
@@ -167,15 +157,11 @@ class OCRTaskManager:
 
             logger.info(f"Processing PDF {current_file}/{len(self.pdf_files)}: {pdf_file.name}")
 
-            current_task.update_state(
-                state='RUNNING',
-                meta={
-                    'status': 'processing',
-                    'progress': progress,
-                    'total_files': len(self.pdf_files),
-                    'current_file': current_file,
-                    'current_filename': pdf_file.name
-                }
+            self.update_progress(
+                'processing', progress,
+                total_files=len(self.pdf_files),
+                current_file=current_file,
+                current_filename=pdf_file.name
             )
 
             output_file = self.output_folder / f"{pdf_file.stem}.txt"
@@ -191,21 +177,16 @@ class OCRTaskManager:
                 failed_files.append(str(pdf_file))
 
         # Create consolidated text file
-        current_task.update_state(
-            state='RUNNING',
-            meta={
-                'status': 'consolidating',
-                'progress': 95,
-                'total_files': len(self.pdf_files),
-                'current_file': len(self.pdf_files)
-            }
+        self.update_progress(
+            'consolidating', 95,
+            total_files=len(self.pdf_files),
+            current_file=len(self.pdf_files)
         )
 
         consolidated_file_id = self._create_consolidated_text_file(processed_files)
 
         # Clean up temporary files
-        if self.temp_files:
-            self.file_repo.cleanup_temp_files(self.temp_files)
+        self.cleanup_temp_files()
 
         # Return results
         return {
@@ -219,7 +200,8 @@ class OCRTaskManager:
         }
 
 
-@celery.task(bind=True, autoretry_for=(ConnectionError, IOError), retry_kwargs={'max_retries': 3, 'countdown': 60})
+@celery.task(bind=True, autoretry_for=BaseFileProcessingTask.autoretry_for, 
+             retry_kwargs=BaseFileProcessingTask.retry_kwargs)
 def process_pdfs_ocr(self, pdf_folder_path: str = None):
     """
     Process PDFs using OCR and extract text
@@ -230,65 +212,7 @@ def process_pdfs_ocr(self, pdf_folder_path: str = None):
     Returns:
         dict: OCR results with file paths and statistics
     """
+    task_handler = BaseFileProcessingTask()
     task_manager = OCRTaskManager(self.request.id, pdf_folder_path)
-
-    try:
-        result = task_manager.run_ocr_processing()
-        logger.info(f"OCR processing completed successfully: {result}")
-        return result
-
-    except FileNotFoundError as e:
-        logger.error(f"File not found: {e}")
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'File not found: {str(e)}'}
-        )
-        raise
-
-    except NotADirectoryError as e:
-        logger.error(f"Directory error: {e}")
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'Directory error: {str(e)}'}
-        )
-        raise
-
-    except PermissionError as e:
-        logger.error(f"Permission denied: {e}")
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'Permission denied: {str(e)}'}
-        )
-        raise
-
-    except ConnectionError as e:
-        logger.error(f"Connection error (will retry): {e}")
-        current_task.update_state(
-            state='RETRY',
-            meta={'status': 'retrying', 'error': f'Connection error: {str(e)}'}
-        )
-        raise Retry(f"Connection error: {e}") from e
-
-    except OSError as e:
-        logger.error(f"IO error (will retry): {e}")
-        current_task.update_state(
-            state='RETRY',
-            meta={'status': 'retrying', 'error': f'IO error: {str(e)}'}
-        )
-        raise Retry(f"IO error: {e}") from e
-
-    except ImportError as e:
-        logger.error(f"Missing dependency: {e}")
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'Missing dependency: {str(e)}'}
-        )
-        raise
-
-    except RuntimeError as e:
-        logger.error(f"Runtime error: {e}")
-        current_task.update_state(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': f'Runtime error: {str(e)}'}
-        )
-        raise
+    
+    return task_handler.execute_with_error_handling(task_manager.run)
