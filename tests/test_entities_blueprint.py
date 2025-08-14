@@ -20,11 +20,6 @@ class EntitiesBlueprintTestConfig(BaseTestConfig):
 class TestEntitiesBlueprint:
     """Test entities blueprint routes"""
 
-    @pytest.fixture
-    def app(self):
-        """Create test Flask app"""
-        app = create_app(EntitiesBlueprintTestConfig())
-        return app
 
     @pytest.fixture
     def client(self, app):

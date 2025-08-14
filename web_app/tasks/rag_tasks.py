@@ -23,16 +23,15 @@ logger = get_project_logger(__name__)
 class CorpusProcessingManager(BaseTaskManager):
     """Manages corpus processing workflow with proper error handling"""
 
-    def __init__(self, corpus_id: str):
+    def __init__(self, corpus_id: str, db_session=None):
         super().__init__(corpus_id)  # Use corpus_id as task_id
         self.corpus_id = corpus_id
         self.corpus = None
-        self.rag_service = RAGService()
-        self.rag_repository = RAGRepository()
+        self.rag_service = RAGService(db_session)
 
     def _load_corpus(self):
         """Load and validate corpus from database"""
-        self.corpus = self.rag_repository.get_corpus_by_id(self.corpus_id)
+        self.corpus = self.rag_service.get_corpus_by_id(self.corpus_id)
         if not self.corpus:
             raise ValueError(f"Corpus not found: {self.corpus_id}")
 
@@ -43,7 +42,7 @@ class CorpusProcessingManager(BaseTaskManager):
 
     def _update_corpus_status(self, status: str, error: str = None):
         """Update corpus processing status in database"""
-        self.rag_repository.update_corpus_status(self.corpus_id, status, error)
+        self.rag_service.update_corpus_status(self.corpus_id, status, error)
         # Update local corpus object too
         self.corpus.processing_status = status
         self.corpus.processing_error = error
@@ -171,7 +170,7 @@ class CorpusProcessingManager(BaseTaskManager):
         # Try to update corpus status in database
         # Note: Task state updates are handled by BaseFileProcessingTask.handle_task_error()
         try:
-            self.rag_repository.update_corpus_status(self.corpus_id, 'failed', error_msg)
+            self.rag_service.update_corpus_status(self.corpus_id, 'failed', error_msg)
             if self.corpus:
                 self.corpus.processing_status = 'failed'
                 self.corpus.processing_error = error_msg

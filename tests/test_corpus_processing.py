@@ -35,9 +35,9 @@ class TestCorpusProcessingManager:
         return corpus
 
     @pytest.fixture
-    def manager(self, sample_corpus_id):
+    def manager(self, sample_corpus_id, db):
         """Create a corpus processing manager instance"""
-        manager = CorpusProcessingManager(sample_corpus_id)
+        manager = CorpusProcessingManager(sample_corpus_id, db.session)
         # Override with mock for testing
         manager.progress = MockTaskProgressRepository(sample_corpus_id)
         return manager
@@ -202,20 +202,20 @@ class TestCorpusProcessingManager:
 
     def test_load_corpus_success(self, app, manager, mock_corpus, sample_corpus_id):
         """Test successful corpus loading"""
-        # Mock the rag_repository instance directly
-        manager.rag_repository = MagicMock()
-        manager.rag_repository.get_corpus_by_id.return_value = mock_corpus
+        # Mock the rag_service instance directly
+        manager.rag_service = MagicMock()
+        manager.rag_service.get_corpus_by_id.return_value = mock_corpus
 
         manager._load_corpus()
 
         assert manager.corpus == mock_corpus
-        manager.rag_repository.get_corpus_by_id.assert_called_once_with(sample_corpus_id)
+        manager.rag_service.get_corpus_by_id.assert_called_once_with(sample_corpus_id)
 
     def test_load_corpus_not_found(self, app, manager, sample_corpus_id):
         """Test corpus loading when corpus doesn't exist"""
-        # Mock the rag_repository instance directly
-        manager.rag_repository = MagicMock()
-        manager.rag_repository.get_corpus_by_id.return_value = None
+        # Mock the rag_service instance directly
+        manager.rag_service = MagicMock()
+        manager.rag_service.get_corpus_by_id.return_value = None
 
         with pytest.raises(ValueError) as exc_info:
             manager._load_corpus()
@@ -225,9 +225,9 @@ class TestCorpusProcessingManager:
     def test_load_corpus_no_content(self, app, manager, mock_corpus, sample_corpus_id):
         """Test corpus loading when corpus has no raw content"""
         mock_corpus.raw_content = None
-        # Mock the rag_repository instance directly
-        manager.rag_repository = MagicMock()
-        manager.rag_repository.get_corpus_by_id.return_value = mock_corpus
+        # Mock the rag_service instance directly
+        manager.rag_service = MagicMock()
+        manager.rag_service.get_corpus_by_id.return_value = mock_corpus
 
         with pytest.raises(ValueError) as exc_info:
             manager._load_corpus()
@@ -237,15 +237,15 @@ class TestCorpusProcessingManager:
     def test_update_corpus_status(self, app, manager, mock_corpus):
         """Test updating corpus status"""
         manager.corpus = mock_corpus
-        # Mock the rag_repository instance directly
-        manager.rag_repository = MagicMock()
-        manager.rag_repository.update_corpus_status.return_value = mock_corpus
+        # Mock the rag_service instance directly
+        manager.rag_service = MagicMock()
+        manager.rag_service.update_corpus_status.return_value = mock_corpus
 
         manager._update_corpus_status('processing', 'Test error')
 
         assert mock_corpus.processing_status == 'processing'
         assert mock_corpus.processing_error == 'Test error'
-        manager.rag_repository.update_corpus_status.assert_called_once_with(manager.corpus_id, 'processing', 'Test error')
+        manager.rag_service.update_corpus_status.assert_called_once_with(manager.corpus_id, 'processing', 'Test error')
 
     @patch('web_app.tasks.rag_tasks.current_task')
     @patch.object(CorpusProcessingManager, '_ensure_embedding_model_available')
@@ -256,9 +256,9 @@ class TestCorpusProcessingManager:
         manager.corpus = mock_corpus
         mock_process.return_value = 42  # 42 chunks stored
 
-        # Mock the rag_repository instance directly
-        manager.rag_repository = MagicMock()
-        manager.rag_repository.update_corpus_status.return_value = mock_corpus
+        # Mock the rag_service instance directly
+        manager.rag_service = MagicMock()
+        manager.rag_service.update_corpus_status.return_value = mock_corpus
 
         result = manager.run()
 

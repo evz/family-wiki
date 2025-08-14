@@ -71,15 +71,22 @@ class TestOCRTaskManager:
             with pytest.raises(NotADirectoryError, match="PDF path is not a directory"):
                 task_manager._validate_paths()
 
-    def test_validate_paths_output_folder_undefined(self, task_manager):
-        """Test path validation when output_folder is not defined"""
+    def test_validate_paths_creates_output_folder(self, task_manager):
+        """Test path validation creates output folder when it doesn't exist"""
         # Create a temporary directory for PDF folder
         with tempfile.TemporaryDirectory() as tmp_dir:
             task_manager.pdf_folder = Path(tmp_dir)
-
-            # This should raise AttributeError because output_folder is not defined
-            with pytest.raises(AttributeError, match="'OCRTaskManager' object has no attribute 'output_folder'"):
-                task_manager._validate_paths()
+            task_manager.output_folder = Path(tmp_dir) / "extracted_text"
+            
+            # Output folder shouldn't exist initially
+            assert not task_manager.output_folder.exists()
+            
+            # Validation should create the output folder
+            task_manager._validate_paths()
+            
+            # Output folder should now exist
+            assert task_manager.output_folder.exists()
+            assert task_manager.output_folder.is_dir()
 
     def test_get_pdf_files_from_uploads(self, task_manager):
         """Test getting PDF files from uploads"""

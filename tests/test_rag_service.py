@@ -20,7 +20,7 @@ class TestRAGService:
     """Test RAG service functionality"""
 
     @pytest.fixture
-    def rag_service(self):
+    def rag_service(self, db):
         """Create RAG service instance for testing"""
         return RAGService()
 
@@ -483,7 +483,7 @@ class TestRAGServiceAdvanced:
     """Test advanced RAG service functionality including hybrid search and ask_question"""
 
     @pytest.fixture
-    def rag_service(self):
+    def rag_service(self, db):
         """Create RAG service instance for testing"""
         return RAGService()
 

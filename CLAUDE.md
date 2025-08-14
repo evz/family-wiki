@@ -269,4 +269,143 @@ pytest --cov=web_app --cov-report=html --cov-fail-under=90
 
 **💡 KEY INSIGHT:** This project has excellent foundational architecture. The "missing" features are primarily frontend/UI elements, not broken backend functionality. The development effort should focus on user interface completion rather than architectural changes.
 
-**Current State**: Ready for feature completion and production deployment. Core functionality is solid and well-tested.
+**Current State**: Backend architecture is solid, but testing approach needs reform. Core functionality works but requires better integration testing.
+
+---
+
+## 🚨 CODE QUALITY REALITY CHECK PROTOCOL 🚨
+
+**MANDATORY: These protocols must be followed to prevent false confidence in code quality.**
+
+### **Problem Analysis (August 2025)**
+
+Recent analysis revealed critical gaps between test coverage and actual functionality:
+
+**Issues Found:**
+- ✗ **OCR Task Manager Bug**: Missing `output_folder` attribute caused immediate crashes
+- ✗ **Over-Mocking Syndrome**: 310+ Mock() instances in tests, obscuring real integration issues
+- ✗ **False Test Confidence**: Tests passed while basic user workflows failed
+- ✗ **Celery Test Misconfiguration**: Tasks sent to Redis during tests instead of running synchronously
+- ✗ **Testing Around Bugs**: Tests explicitly expected broken behavior instead of requiring fixes
+
+**Root Cause:** Testing strategy focused on isolated units with heavy mocking instead of real user workflows.
+
+### **BEFORE Claiming Code Quality**
+
+**Step 1: Run Smoke Tests FIRST**
+```bash
+# MANDATORY: Always run before any "it works" claims
+source .venv/bin/activate && set -a && source .env && set +a
+python smoke_tests.py
+```
+
+**Step 2: Test Real User Workflows**
+- ❌ **DON'T**: Mock TaskManager classes in "integration" tests  
+- ✅ **DO**: Test actual routes → task execution → results
+- ❌ **DON'T**: Assume passing unit tests = working features
+- ✅ **DO**: Test complete user journeys end-to-end
+
+**Step 3: Critical Assessment Questions**
+Before declaring anything "working":
+
+1. **Can a user actually do this without crashes?**
+2. **Have I tested the real execution path, not just mocked versions?**
+3. **Would my tests catch a missing attribute like `output_folder`?**
+4. **Am I mocking so much that I'm testing fake behavior?**
+
+### **Testing Standards**
+
+**Integration Test Requirements:**
+- ✅ Celery tasks run synchronously with `CELERY_TASK_ALWAYS_EAGER = True`
+- ✅ Test actual HTTP requests → task execution → database changes
+- ✅ Mock external services (Ollama, file system) but NOT internal classes
+- ✅ Each major user workflow has at least one end-to-end test
+
+**Mock Usage Guidelines:**
+- ✅ **Mock External Dependencies**: APIs, file system, network calls
+- ❌ **DON'T Mock Internal Logic**: TaskManagers, Services, Repositories  
+- ✅ **Mock at System Boundaries**: Keep mocks at the edges
+- ❌ **DON'T Mock What You're Testing**: If testing OCR workflow, don't mock OCRTaskManager
+
+**Red Flags in Tests:**
+- 🚨 Tests that `@patch` the very class they claim to test
+- 🚨 Tests that expect `AttributeError` instead of fixing the bug
+- 🚨 "Integration" tests that mock everything they integrate with
+- 🚨 Passing tests when basic user actions fail immediately
+
+### **Verification Checklist**
+
+**Before Deployment:**
+- [ ] Smoke tests pass (`python smoke_tests.py`)  
+- [ ] At least one end-to-end test per user workflow
+- [ ] Celery tasks configured for synchronous testing
+- [ ] External dependencies mocked, internal logic tested real
+- [ ] No tests expecting broken behavior (AttributeError, etc.)
+
+**Before Code Review:**
+- [ ] Can demonstrate feature working from UI → backend → results
+- [ ] Tests would catch missing attributes/methods
+- [ ] Integration tests don't mock the integration points
+- [ ] Mock count reasonable (< 50% of total test assertions)
+
+### **Emergency Recovery Protocol**
+
+**When Something "Should Work" but Immediately Fails:**
+
+1. **STOP**: Don't assume tests are comprehensive
+2. **Check**: Run smoke tests and end-to-end workflows
+3. **Analyze**: Look for over-mocking in related tests
+4. **Fix**: The actual bug first, then improve tests
+5. **Learn**: Document what the tests missed and why
+
+### **AI Development Guidelines**
+
+**For Claude Code interactions:**
+
+**Assessment Protocol:**
+- ❌ **NEVER** claim "well-tested" without running actual workflows
+- ✅ **ALWAYS** run smoke tests before quality assessments  
+- ❌ **NEVER** trust passing unit tests as proof of working features
+- ✅ **ALWAYS** test from user interaction → final result
+
+**Code Review Focus:**
+- Look for integration gaps, not just unit test coverage
+- Verify tests exercise real code paths users will hit  
+- Question heavy mocking in "integration" tests
+- Prioritize end-to-end workflow testing
+
+**Communication Standards:**
+- Distinguish between "unit tests pass" vs "feature actually works"
+- Be explicit about what was tested vs what was assumed
+- Always run verification before making quality claims
+- Document assumptions and testing limitations
+
+---
+
+## Development Process Integration
+
+### **Quality Gates (UPDATED - MANDATORY):**
+```bash
+# 1. SMOKE TESTS (must pass FIRST)
+source .venv/bin/activate && set -a && source .env && set +a
+python smoke_tests.py
+
+# 2. UNIT TESTS (existing)
+pytest
+
+# 3. LINTING (existing)  
+ruff check .
+
+# 4. INTEGRATION VERIFICATION (new requirement)
+# Manual verification that major user workflows complete without crashes
+```
+
+### **Definition of Done**
+
+A feature is "done" when:
+- ✅ Smoke tests pass
+- ✅ Unit tests pass
+- ✅ At least one end-to-end test exists and passes
+- ✅ Manual verification from UI → backend → results completes
+- ✅ Linting passes
+- ✅ No tests expect broken behavior

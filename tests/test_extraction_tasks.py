@@ -712,13 +712,9 @@ class TestExtractGenealogyDataTask:
 
         # ConnectionError should be retried, but after max retries it should eventually fail
         assert not result.successful()
-        # Error logging is now handled by BaseFileProcessingTask
-        mock_base_current_task.update_state.assert_called()
-
-        # Verify the retry behavior was triggered
-        retry_calls = [call for call in mock_base_current_task.update_state.call_args_list
-                      if call[1]['state'] == 'RETRY']
-        assert len(retry_calls) >= 1
+        # Verify the final result is the ConnectionError that was raised
+        assert isinstance(result.result, ConnectionError)
+        assert str(result.result) == "Connection failed"
 
     def test_extract_genealogy_data_io_error(self, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
         """Test extraction with IO error (should retry)"""
@@ -744,11 +740,8 @@ class TestExtractGenealogyDataTask:
         assert result.failed()
         assert isinstance(result.result, RuntimeError)
 
-        # Verify error handling - now handled by BaseFileProcessingTask
-        mock_base_current_task.update_state.assert_called_with(
-            state='FAILURE',
-            meta={'status': 'failed', 'error': 'Runtime error: Unexpected error'}
-        )
+        # Verify the final result is the RuntimeError that was raised
+        assert str(result.result) == "Unexpected error"
 
     def test_extract_genealogy_data_progress_updates(self, temp_text_file, mock_task_manager, mock_current_task, mock_logger):
         """Test that progress updates are called during extraction"""

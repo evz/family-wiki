@@ -14,7 +14,7 @@ class TestJobFileRepository:
     """Test JobFileRepository functionality"""
 
     @pytest.fixture
-    def repository(self):
+    def repository(self, db):
         """Create repository instance"""
         return JobFileRepository()
 

@@ -1,18 +1,13 @@
 """
 Research questions blueprint - handles genealogy research question generation
 """
-import uuid
-
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from web_app.blueprints.blueprint_utils import (
     get_task_status_safely,
     handle_blueprint_errors,
-    safe_file_operation,
-    safe_task_submit,
 )
-from web_app.database import db
-from web_app.repositories.job_file_repository import JobFileRepository
+from web_app.services.research_service import ResearchService
 from web_app.shared.logging_config import get_project_logger
 from web_app.tasks.research_tasks import generate_research_questions
 
@@ -27,39 +22,18 @@ research_bp = Blueprint('research', __name__, url_prefix='/research')
 def start_research():
     """Start research questions job from form"""
     input_file = request.files.get('input_file')
-    file_repo = JobFileRepository()
-
-    # Generate task ID first
-    task_id = str(uuid.uuid4())
-
-    # If no file uploaded, use latest extraction results
-    if not input_file or input_file.filename == '':
-        task = safe_task_submit(
-            lambda: generate_research_questions.apply_async(task_id=task_id),
-            "research questions"
-        )
-        flash(f'Research questions job started using latest extraction results. Task ID: {task.id}', 'success')
-        logger.info(f"Started research task: {task.id}")
-        return redirect(url_for('main.index'))
-
-    # Save uploaded file first with transaction management
-    with db.session.begin():
-        file_id = safe_file_operation(
-            file_repo.save_uploaded_file,
-            "research input file upload",
-            input_file, task_id, 'research', 'input'
-        )
-        if not file_id:
-            flash('Failed to save uploaded input file', 'error')
-            return redirect(url_for('main.index'))
-
-    # Start the task with the pre-generated task ID
-    task = safe_task_submit(
-        lambda: generate_research_questions.apply_async(task_id=task_id),
-        "research questions"
-    )
-    flash(f'Research questions job started with uploaded file. Task ID: {task.id}', 'success')
-    logger.info(f"Started research task with uploaded file: {task.id}")
+    input_files = [input_file] if input_file else []
+    
+    # Use service to handle business logic
+    service = ResearchService()
+    result = service.start_research_job(input_files)
+    
+    if result.success:
+        flash(result.message, 'success')
+        logger.info(f"Started research task: {result.task_id}")
+    else:
+        flash(f'Failed to start research job: {result.error}', 'error')
+        logger.error(f"Research job failed: {result.error}")
 
     return redirect(url_for('main.index'))
 

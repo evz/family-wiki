@@ -25,12 +25,6 @@ class DatabaseTestConfig(BaseTestConfig):
         super().__init__()
 
 
-@pytest.fixture
-def app():
-    """Create test Flask app"""
-    app = create_app(DatabaseTestConfig())
-    return app
-
 
 class TestDatabaseInitialization:
     """Test our database initialization logic"""

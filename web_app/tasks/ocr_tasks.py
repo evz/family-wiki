@@ -21,6 +21,7 @@ class OCRTaskManager(BaseTaskManager, FileResultMixin):
         super().__init__(task_id)
         self.pdf_folder_path = pdf_folder_path or "web_app/pdf_processing/pdfs"
         self.pdf_folder = Path(self.pdf_folder_path)
+        self.output_folder = self.pdf_folder / "extracted_text"  # Add missing output_folder attribute
         self.processor = None
         self.pdf_files = []
 

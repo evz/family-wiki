@@ -12,7 +12,7 @@ from web_app.repositories.genealogy_repository import GenealogyDataRepository
 @pytest.fixture
 def repository(db):
     """Create repository instance"""
-    return GenealogyDataRepository()
+    return GenealogyDataRepository(db.session)
 
 
 class TestGenealogyDataRepository:

@@ -20,7 +20,7 @@ from web_app.services.prompt_service import PromptService
 @pytest.fixture
 def prompt_service(db):
     """Create prompt service with database context"""
-    return PromptService()
+    return PromptService(db.session)
 
 
 class TestPromptService:
@@ -81,8 +81,9 @@ class TestPromptService:
         result = prompt_service.update_prompt("nonexistent-id", name="New Name")
         assert result is None
 
-    def test_delete_prompt(self, prompt_service):
+    def test_delete_prompt(self, prompt_service, clean_db):
         """Test deleting a prompt"""
+        clean_db()  # Start with clean database
         initial_count = len(prompt_service.get_all_prompts())
 
         prompt1 = prompt_service.create_prompt("Prompt 1", "Text 1", "Desc 1")

@@ -27,10 +27,11 @@ logger = get_project_logger(__name__)
 class RAGService:
     """Service for managing source text and RAG queries"""
 
-    def __init__(self):
+    def __init__(self, db_session=None):
         self.logger = get_project_logger(__name__)
         self.text_processor = TextProcessingService()
-        self.rag_repository = RAGRepository()
+        self.rag_repository = RAGRepository(db_session)
+        self.db_session = db_session or db.session
 
     def _get_ollama_config(self):
         """Get Ollama server configuration from Flask config"""
@@ -103,7 +104,7 @@ class RAGService:
         )
         
         # CRITICAL: Commit the transaction to ensure corpus is available for background task
-        db.session.commit()
+        self.db_session.commit()
         self.logger.info(f"Created and committed corpus: {name}")
         
         # Now start the background task - corpus is guaranteed to be available
@@ -125,6 +126,16 @@ class RAGService:
     def get_all_corpora(self):
         """Get all text corpora"""
         return self.rag_repository.get_all_corpora()
+
+    @handle_service_exceptions(logger)
+    def get_corpus_by_id(self, corpus_id: str):
+        """Get corpus by ID"""
+        return self.rag_repository.get_corpus_by_id(corpus_id)
+
+    @handle_service_exceptions(logger)
+    def update_corpus_status(self, corpus_id: str, status: str, error: str = None):
+        """Update corpus processing status"""
+        return self.rag_repository.update_corpus_status(corpus_id, status, error)
 
     @handle_service_exceptions(logger)
     def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:

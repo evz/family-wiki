@@ -13,7 +13,7 @@ class TestSystemService:
     """Test system status service functionality"""
 
     @pytest.fixture
-    def service(self):
+    def service(self, db):
         """SystemService instance for testing"""
         return SystemService()
 

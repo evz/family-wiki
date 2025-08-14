@@ -10,6 +10,7 @@ from pathlib import Path
 
 import psycopg2
 import pytest
+from sqlalchemy import event
 
 from web_app import create_app
 from web_app.database import db as _db
@@ -90,22 +91,11 @@ class BaseTestConfig:
             # Use dockerized PostgreSQL test database
             self.sqlalchemy_database_uri = 'postgresql://family_wiki_user:family_wiki_password@localhost:5432/family_wiki_test'
 
-        # Verify PostgreSQL connection
-        try:
-            conn = psycopg2.connect(self.sqlalchemy_database_uri)
-            conn.close()
-            print(f"Using PostgreSQL test database: {self.sqlalchemy_database_uri}")
-        except Exception as e:
-            raise RuntimeError(
-                f"PostgreSQL test database not available: {e}\n"
-                "Run './setup-test-db.sh' or 'docker-compose up -d db' to start PostgreSQL"
-            )
+        # Database URI configured - let Flask-SQLAlchemy handle connections
+        print(f"Using PostgreSQL test database: {self.sqlalchemy_database_uri}")
 
         self.sqlalchemy_track_modifications = False
 
-        # Celery configuration
-        self.celery_broker_url = 'redis://localhost:6379/0'
-        self.celery_result_backend = 'redis://localhost:6379/1'
 
         # Ollama configuration
         self.ollama_host = 'localhost'
@@ -117,9 +107,9 @@ class BaseTestConfig:
         return f"http://{self.ollama_host}:{self.ollama_port}"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def app():
-    """Create Flask app for testing"""
+    """Create Flask app for testing - session scoped to share with tables fixture"""
     app = create_app(BaseTestConfig())
     return app
 
@@ -130,41 +120,87 @@ def test_config():
 
 # All tests now require PostgreSQL - no conditional skipping needed
 
+@pytest.fixture(scope="session", autouse=True)
+def tables(app):
+    """Create database tables once per test session"""
+    with app.app_context():
+        _db.create_all()
+        yield
+        _db.drop_all()
+        # Dispose of all connections in the pool
+        _db.engine.dispose()
 
 @pytest.fixture
-def db(app):
-    """Create database for testing with automatic transaction rollback"""
+def db(app, tables):
+    """Create database for testing with SAVEPOINT pattern for proper transaction handling"""
+    
     with app.app_context():
-        # Import all models to ensure they're registered with SQLAlchemy
-
-        _db.create_all()
-
-        # Start a transaction that will be rolled back after the test
-        transaction = _db.session.begin()
+        
+        # One connection + outer transaction per test
+        conn = _db.engine.connect()
+        outer = conn.begin()  # BEGIN
+        
+        # (Re)bind Flask-SQLAlchemy's scoped session to this connection
+        _db.session.remove()
+        _db.session.configure(bind=conn, autoflush=False, expire_on_commit=False)
+        
+        # Start SAVEPOINT at the connection level
+        nested = conn.begin_nested()  # SAVEPOINT
+        
+        # After each commit, re-open SAVEPOINT
+        real_session = _db.session()  # unwrap scoped_session to a real Session
+        
+        @event.listens_for(real_session, "after_transaction_end")
+        def restart_savepoint(sess, trans):
+            # When the nested transaction ends, make a new SAVEPOINT
+            if not conn.closed and conn.in_transaction() and not conn.in_nested_transaction():
+                conn.begin_nested()
 
         try:
             yield _db
         finally:
-            # Always rollback the transaction to prevent data persistence
+            # Clean up: remove scoped session, rollback outer, close
             try:
-                if transaction.is_active:
-                    transaction.rollback()
+                _db.session.remove()
             except Exception:
-                # If transaction is already closed, ensure session rollback
-                _db.session.rollback()
-
-            # Drop all tables before closing connections
-            _db.drop_all()
-
-            # Close all connections to prevent connection pool exhaustion
-            _db.session.close()
-            _db.engine.dispose()
+                pass
+            try:
+                # Rollback the outer transaction (which includes all savepoints)
+                outer.rollback()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @pytest.fixture
 def client(app):
     """Create test client"""
     return app.test_client()
+
+
+@pytest.fixture
+def db_no_transaction(app):
+    """
+    Database fixture for integration tests that avoids transaction conflicts.
+    
+    Use this instead of 'db' fixture when testing blueprints that manage their own
+    transactions with 'with db.session.begin():'. The regular 'db' fixture creates
+    a transaction that conflicts with blueprint transaction management.
+    """
+    with app.app_context():
+        # Create tables without starting a transaction
+        _db.create_all()
+        
+        try:
+            yield _db
+        finally:
+            # Clean up: drop tables and close connections
+            _db.drop_all()
+            _db.session.close()
+            _db.engine.dispose()
 
 
 @pytest.fixture

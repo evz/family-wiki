@@ -181,57 +181,21 @@ class BaseFileProcessingTask:
         """
         error_msg = f"{context}: {str(error)}" if context else str(error)
         
-        # Map exception types to appropriate states and actions
+        # Just log errors - let Celery handle state management and retries
         if isinstance(error, FileNotFoundError):
             self.logger.error(f"File not found: {error}")
-            current_task.update_state(
-                state='FAILURE',
-                meta={'status': 'failed', 'error': f'File not found: {str(error)}'}
-            )
-            
         elif isinstance(error, (NotADirectoryError, ValueError)):
             self.logger.error(f"Invalid input: {error}")
-            current_task.update_state(
-                state='FAILURE',
-                meta={'status': 'failed', 'error': f'Invalid input: {str(error)}'}
-            )
-            
         elif isinstance(error, PermissionError):
             self.logger.error(f"Permission denied: {error}")
-            current_task.update_state(
-                state='FAILURE',
-                meta={'status': 'failed', 'error': f'Permission denied: {str(error)}'}
-            )
-            
         elif isinstance(error, (ConnectionError, IOError)):
             self.logger.error(f"IO/Connection error (will retry): {error}")
-            current_task.update_state(
-                state='RETRY',
-                meta={'status': 'retrying', 'error': f'Connection/IO error: {str(error)}'}
-            )
-            raise Retry(error_msg) from error
-            
         elif isinstance(error, ImportError):
             self.logger.error(f"Missing dependency: {error}")
-            current_task.update_state(
-                state='FAILURE',
-                meta={'status': 'failed', 'error': f'Missing dependency: {str(error)}'}
-            )
-            
         elif isinstance(error, RuntimeError):
             self.logger.error(f"Runtime error: {error}")
-            current_task.update_state(
-                state='FAILURE',
-                meta={'status': 'failed', 'error': f'Runtime error: {str(error)}'}
-            )
-            
         else:
-            # Generic error handling
             self.logger.error(f"Unexpected error: {error}", exc_info=True)
-            current_task.update_state(
-                state='FAILURE',
-                meta={'status': 'failed', 'error': f'Unexpected error: {str(error)}'}
-            )
     
     def validate_file_path(self, file_path: str, must_exist: bool = True, 
                           must_be_file: bool = True) -> Path:
@@ -279,5 +243,7 @@ class BaseFileProcessingTask:
             return result
             
         except Exception as e:
-            self.handle_task_error(e)
+            # Log the error but don't update state manually - let Celery handle retries
+            error_msg = f"Task execution failed: {str(e)}"
+            self.logger.error(error_msg)
             raise

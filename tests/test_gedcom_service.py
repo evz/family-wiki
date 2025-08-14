@@ -228,7 +228,7 @@ class TestGedcomService:
     """Test GedcomService class"""
 
     @pytest.fixture
-    def service(self):
+    def service(self, db):
         """Create test service"""
         return GedcomService()
 

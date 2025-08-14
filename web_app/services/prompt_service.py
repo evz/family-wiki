@@ -4,6 +4,7 @@ Service for managing LLM extraction prompts
 
 from pathlib import Path
 
+from web_app.database import db
 from web_app.repositories.rag_repository import RAGRepository
 from web_app.services.exceptions import NotFoundError, handle_service_exceptions
 from web_app.shared.logging_config import get_project_logger
@@ -15,8 +16,9 @@ logger = get_project_logger(__name__)
 class PromptService:
     """Service for managing extraction prompts"""
 
-    def __init__(self):
-        self.rag_repository = RAGRepository()
+    def __init__(self, db_session=None):
+        self.rag_repository = RAGRepository(db_session)
+        self.db_session = db_session or db.session
 
     @handle_service_exceptions(logger)
     def get_all_prompts(self, prompt_type: str = None):
@@ -45,6 +47,7 @@ class PromptService:
             description=description,
             template_variables=template_variables
         )
+        self.db_session.commit()  # In tests this commits to SAVEPOINT, in production commits transaction
         logger.info(f"Created new {prompt_type} prompt: {name}")
         return prompt
 
@@ -52,6 +55,7 @@ class PromptService:
         """Update an existing prompt"""
         try:
             prompt = self.rag_repository.update_prompt(prompt_id, name, prompt_text, description)
+            self.db_session.commit()  # In tests this commits to SAVEPOINT, in production commits transaction
             logger.info(f"Updated prompt: {prompt.name}")
             return prompt
         except ValueError as e:
@@ -67,6 +71,7 @@ class PromptService:
         """Delete a prompt"""
         try:
             result = self.rag_repository.delete_prompt(prompt_id)
+            self.db_session.commit()  # In tests this commits to SAVEPOINT, in production commits transaction
             logger.info(f"Deleted {result['prompt_type']} prompt: {result['prompt_name']}")
             return True
         except ValueError as e:
