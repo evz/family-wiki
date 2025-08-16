@@ -66,7 +66,13 @@ class OCRTaskManager(BaseTaskManager, FileResultMixin):
     def _process_single_pdf(self, pdf_file: Path, output_file: Path) -> bool:
         """Process a single PDF file"""
         try:
-            return self.processor.process_single_pdf(pdf_file, output_file)
+            # Extract text from PDF
+            extracted_text = self.processor.process_pdf(pdf_file)
+            
+            # Write text to output file
+            output_file.write_text(extracted_text, encoding='utf-8')
+            
+            return bool(extracted_text.strip())  # Return True if we got text
         except FileNotFoundError:
             logger.error(f"PDF file disappeared during processing: {pdf_file}")
             return False

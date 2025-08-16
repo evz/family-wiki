@@ -2,6 +2,14 @@
 
 A unified Flask application for AI-powered genealogy digitization. Process Dutch family history books using OCR and Large Language Models to extract structured family data.
 
+## Lessons Learned
+
+This project represents an important learning experience in AI-assisted software development. While the family-wiki application successfully implements comprehensive genealogy processing features with OCR, LLM extraction, and RAG queries, the development process revealed critical insights about architectural complexity and testing practices when working with AI assistants on complex projects.
+
+The project evolved through iterative "improvements" that gradually introduced significant over-engineering: multiple layers of abstraction (repositories, services, task managers), complex inheritance hierarchies, and premature optimization for scale that didn't exist. Most critically, despite 625 passing tests claiming "comprehensive coverage," basic user functionality was completely broken due to a missing single line of code—a stark reminder that test count doesn't equal test quality. The extensive testing infrastructure was over-mocked to the point where "integration" tests never actually tested real integrations.
+
+These hard-learned lessons directly informed the approach for the successor project, [genealogy-extractor](https://github.com/evz/ai-genealogy), which prioritizes simplicity, comprehensive quality gates, and real-world testing over architectural complexity. The detailed analysis in `DESIGN_LESSONS_LEARNED.md` and `TESTING_LESSONS_LEARNED.md` provides a framework for avoiding similar pitfalls in future AI-assisted development projects.
+
 ## Core Features
 
 - **🔍 OCR Processing**: Extract text from PDF scans with rotation detection
